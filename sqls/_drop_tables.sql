@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS roleplay_messages;
+DROP TABLE IF EXISTS players;
+DROP TABLE IF EXISTS connections;
+DROP TABLE IF EXISTS rooms;
+DROP TABLE IF EXISTS zones;

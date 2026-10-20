@@ -1,0 +1,9 @@
+aiosqlite
+black
+git+https://github.com/clari7744/discord.py.git
+git+https://github.com/clari7744/DPyUtils.git
+fuzzywuzzy
+isort
+jishaku
+python-Levenshtein
+python-dotenv

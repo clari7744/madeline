@@ -6,7 +6,7 @@ from discord import ChannelType, HTTPException, Interaction, Member, Message, Te
 from discord.ext import commands
 
 from madlib import Madeline, Player, SearchTerm
-from madlib.config import VALID_CATEGORIES
+from madlib.config import TYPING_CATEGORIES, TYPING_EXCLUDE_CHANNELS
 
 log = getLogger(__name__)
 
@@ -142,7 +142,12 @@ class Events(commands.Cog):
     @commands.Cog.listener("on_typing")
     async def notify_room_members(self, channel: TextChannel, user: Member, when: datetime):
         log.info(f"{user} is typing in {channel} at {when}")
-        if channel.category_id not in VALID_CATEGORIES or user.bot:
+        if (
+            channel.category_id not in TYPING_CATEGORIES
+            or channel.id in TYPING_EXCLUDE_CHANNELS
+            or channel.type != ChannelType.text
+            or user.bot
+        ):
             return
         pcache = self.bot.cache.get_cache(Player)
         typer = await pcache.fetch(channel.id)
@@ -158,7 +163,9 @@ class Events(commands.Cog):
             try:
                 await player.channel.typing()
             except:
-                log.warning(f"Failed to send typing notification to {player} in {player.channel} ({player.channel_id}).")
+                log.warning(
+                    f"Failed to send typing notification to {player} in {player.channel} ({player.channel_id})."
+                )
 
 
 async def setup(bot: Madeline):

@@ -258,7 +258,7 @@ class Cache[CachedT: Table]:
             await c.execute(f"SELECT * FROM {self.type.table_name} WHERE {where_clause}", key)
             row = await c.fetchone()
             if row is None:
-                raise ValueError(f"No {self.type.__name__} found with the given primary key(s).")
+                raise ValueError(f"No {self.type.__name__} found with the given primary key(s) {key}.")
             obj: CachedT = await self.load_from_row(row)
             self.set(obj)  # Cache the fetched object
             for ref_name, ref_type in self.foreign_refs.items():

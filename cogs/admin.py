@@ -1,4 +1,4 @@
-from discord import Interaction, app_commands
+from discord import AppCommandOptionType, AppCommandType, Color, Embed, Interaction, app_commands
 from discord.ext import commands
 from DPyUtils import _and, an
 
@@ -9,7 +9,7 @@ from madlib.ui import DiceRollView
 
 @app_commands.guild_only()
 @app_commands.guilds(GUILD_ID)
-@app_commands.checks.has_permissions(administrator=True)
+@app_commands.default_permissions(administrator=True)
 @app_commands.check(lambda ixn: ixn.client.is_owner(ixn.user))
 class AdminCog(commands.GroupCog, name="admin"):
     """Admin commands for managing the game."""
@@ -142,7 +142,7 @@ class AdminCog(commands.GroupCog, name="admin"):
             return await ixn.send("No players found (the player cache is empty?).")
         for recipient in recipients:
             await recipient.send(f"**Loudspeaker:** {message}", fallback=ixn)
-        return await ixn.send(f"Sent loudspeaker message to all players: {message}")
+        return await ixn.send(f"Sent loudspeaker message to all players.\n## Message\n{message}")
 
     @loudspeaker.command(name="zone")
     async def loudspeaker_zone(self, ixn: Interaction[Madeline], zone: str, message: str):
@@ -161,7 +161,7 @@ class AdminCog(commands.GroupCog, name="admin"):
             return await ixn.send(f"No players found in zone {zone} (either that zone doesn't exist or is empty).")
         for recpient in recipients:
             await recpient.send(f"**Loudspeaker:** {message}", fallback=ixn)
-        return await ixn.send(f"Sent loudspeaker message to all players in zone {zone}: {message}")
+        return await ixn.send(f"Sent loudspeaker message to all players in zone {zone}.\n## Message\n{message}")
 
     @loudspeaker.command(name="room")
     async def loudspeaker_room(
@@ -180,7 +180,7 @@ class AdminCog(commands.GroupCog, name="admin"):
             return await ixn.send(f"No players found in room {room} (either that room doesn't exist or is empty).")
         for recipient in recipients:
             await recipient.send(f"**Loudspeaker:** {message}", fallback=ixn)
-        return await ixn.send(f"Sent loudspeaker message to all players in room {room}: {message}")
+        return await ixn.send(f"Sent loudspeaker message to all players in room {room}.\n## Message\n{message}")
 
     @loudspeaker.command(name="player")
     async def loudspeaker_player(
@@ -197,7 +197,7 @@ class AdminCog(commands.GroupCog, name="admin"):
             The message to send.
         """
         await player.send(f"**Loudspeaker:** {message}", fallback=ixn)
-        return await ixn.send(f"Sent loudspeaker message to **{player}**: {message}")
+        return await ixn.send(f"Sent loudspeaker message to **{player}**.\n## Message\n{message}")
 
     @app_commands.command(name="lock")
     async def lock(
@@ -218,8 +218,21 @@ class AdminCog(commands.GroupCog, name="admin"):
 
         room.locked = lock
         await room.save()
-        await room.alert(f"**{room}** has been {'' if lock else 'un'}locked by an administrator.", fallback=ixn)
+        await room.alert(f"**{room}** has been {'' if lock else 'un'}locked by an administrator.")
         return await ixn.send(f"{'L' if lock else 'Unl'}ocked **{room}**.")
+
+    @app_commands.command(name="show-commands")
+    async def show_commands(self, ixn: Interaction[Madeline], hide_admin_only: bool = True):
+        """
+        Show all commands available with mentions.
+        """
+        flat = []
+        async for c, m in self.bot.tree.walk_mentions(guild=ixn.guild):
+            perms = (c.root_parent or c).default_permissions
+            if hide_admin_only and getattr(perms, "administrator", False):
+                continue
+            flat.append(f"{m} - `{m}`")
+        await ixn.send(embed=Embed(title="Commands", description="\n".join(flat), color=Color.random()))
 
 
 async def setup(bot: Madeline):

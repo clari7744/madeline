@@ -18,7 +18,7 @@ from madlib import (
     SearchTerm,
     is_game_channel,
 )
-from madlib.config import GUILD_ID, LOCAL_DEBUG
+from madlib.config import CURRENT_DEBUG, GUILD_ID, LOCAL_DEBUG
 from madlib.ui import EditRoleplayMessageModal
 
 log = getLogger(__name__)
@@ -80,7 +80,11 @@ class CommunicationCog(commands.Cog):
         """
         # all messages sent in ROOM in the last 20 minutes, sorted by last_updated, oldest-first
         await ixn.response.defer(thinking=True)
-        log.log(LOCAL_DEBUG, f"Eavesdropping on {connection.connected_to} from {connection.room.room_name}")
+        player = await Player.from_interaction(ixn)
+        log.log(
+            CURRENT_DEBUG,
+            f"{player} is eavesdropping on {connection.connected_to} from {connection.room.room_name}",
+        )
         all_msgs = self.bot.cache.get_cache(RoleplayMessage).get_many(
             sent_in_room=SearchTerm(connection.connected_to, ignore_case=True),
             message_type="rp",
@@ -88,8 +92,8 @@ class CommunicationCog(commands.Cog):
         )
 
         rp_unique: dict[int, RoleplayMessage] = {}
-        for msg in all_msgs:
-            rp_unique[msg.original_message_id] = msg
+        for rp_msg in all_msgs:
+            rp_unique[rp_msg.original_message_id] = rp_msg
         eavesdroppable = sorted(rp_unique.values())
 
         if not eavesdroppable:
@@ -97,25 +101,30 @@ class CommunicationCog(commands.Cog):
                 f"No RP messages found in {connection.connected_to.room_name} within the last 20 minutes."
             )
         log.log(
-            LOCAL_DEBUG,
+            CURRENT_DEBUG,
             f"Found {len(eavesdroppable)} RP messages in {connection.connected_to.room_name} to eavesdrop on.",
         )
         # await ixn.send(
         #     f"Found {len(eavesdroppable)} RP message{'' if len(eavesdroppable) == 1 else 's'} in {connection.connected_to.room_name} from the last 20 minutes:"
         # )
-        for msg in eavesdroppable:
-            txt = "ERROR: NOT FOUND"
-            try:
-                original_msg = await msg.sent_by.channel.fetch_message(msg.original_message_id)
-                match = self.dialog_re.findall(original_msg.content)
-                if not match:  # no dialogue in this message!
-                    continue
-                txt = "\n".join(f'"{d}"' for d in match)
-            except Exception as e:
-                log.error(f"Failed to fetch original message for eavesdrop: {e}", exc_info=e)
-            await ixn.send(
-                f"*{format_dt(msg.last_updated)} - **{random.choice((msg.sent_by.pretty_name, '[REDACTED]'))}** said:* {txt}",
+        for rp_msg in eavesdroppable:
+            log.log(
+                CURRENT_DEBUG,
+                f"RP message from {rp_msg.sent_by.pretty_name} in {rp_msg.sent_in_room}: {rp_msg.message_content}",
             )
+            txt = rp_msg.message_content
+            match = self.dialog_re.findall(rp_msg.message_content)
+            log.log(
+                CURRENT_DEBUG,
+                f"Found {len(match)} dialogue lines in RP message {rp_msg.original_message_id}: {match}",
+            )
+            if match:  # no dialogue in this message!
+                txt = "\n".join(f'"{d}"' for d in match)
+
+            await ixn.send(
+                f"*{format_dt(rp_msg.last_updated)} - **{random.choice((rp_msg.sent_by.pretty_name, '[REDACTED]'))}** said:* {txt}",
+            )
+        await ixn.send(f"End of RP messages from {connection.connected_to.room_name}.", ephemeral=True)
 
     @app_commands.command(name="whisper")
     @app_commands.guild_only()
@@ -176,7 +185,7 @@ class CommunicationCog(commands.Cog):
         rpm_cache = self.bot.cache.get_cache(RoleplayMessage)
         example_msg = rpm_cache.get_first(original_message_id=message.id)
         if example_msg is None:
-            raise app_commands.CheckFailure("This is not a roleplay message.", ephemeral=True)
+            raise app_commands.CheckFailure("This is not a roleplay message.")
         await ixn.response.send_modal(EditRoleplayMessageModal(player, message, example_msg.message_type))
 
     @app_commands.guild_only()
@@ -187,7 +196,7 @@ class CommunicationCog(commands.Cog):
         rpm_cache = ixn.client.cache.get_cache(RoleplayMessage)
         found_messages = rpm_cache.get_many(original_message_id=message.id, sent_by=player)
         if not found_messages:
-            raise app_commands.CheckFailure("This is not a roleplay message.", ephemeral=True)
+            raise app_commands.CheckFailure("This is not a roleplay message.")
         c = DPyUtils.Confirmation(ixn, timeout=30, ephemeral=True)
         await ixn.send("Are you sure you want to delete this message?", view=c, ephemeral=True)
         if not await c.run():

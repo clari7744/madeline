@@ -43,7 +43,7 @@ class CheckGroup(app_commands.Group, name="check", description="Check various th
         return await ixn.send(
             embed=Embed(title=f"Room: {room}").add_field(
                 name="Connected Rooms",
-                value="\n".join(f"{c.connected_to} ({c.direction})" for c in room.get_connected()) or "None",
+                value="\n".join(f"{c.connected_to} ({c.direction})" for c in room.get_connected()) or "None (???)",
             )
         )
 
@@ -63,7 +63,7 @@ class CheckGroup(app_commands.Group, name="check", description="Check various th
         return await ixn.send(
             embed=Embed(title=f"Room: {room}", description=room.description).add_field(
                 name="Connected Rooms",
-                value="\n".join(f"{c.connected_to} ({c.direction})" for c in room.get_connected()) or "None",
+                value="\n".join(f"{c.connected_to} ({c.direction})" for c in room.get_connected()) or "None (???)",
             )
         )
 
@@ -195,9 +195,15 @@ class EnvironmentCog(commands.Cog):
                 f"### !!! Player {player} is not in the room {before}, but in {player.location}. !!!\nThis means that something about the converter broke."
             )
 
+        jiggle = lambda: after.alert(  # noqa: E731
+            f"*The handle jiggles, as if somebody is trying to open the door to the **{before}** from the other side...unfortunately, this door is locked.*",
+            excludes=[player],
+        )
         if before.locked:
+            await jiggle()
             return await ixn.send(f"*You cannot leave {before} because it is locked.*", ephemeral=True)
         if after.locked:
+            await jiggle()
             return await ixn.send(f"*You cannot enter {after} because it is locked.*", ephemeral=True)
         # THIS IS IN A DUMB AND STUPID ORDER !
         # THE ALERTS HAPPEN BEFORE TEH ACTIONS !
@@ -250,7 +256,14 @@ class EnvironmentCog(commands.Cog):
 
         # Room description
         await player.send(
-            f"## {after}\n{' | '.join(p.emoji if p.emoji else p.pretty_name for p in after.get_members())}```\n{after.description}\n```",
+            "",
+            embed=Embed(
+                title=f"Room: {after}",
+                description=f"{' | '.join(p.emoji if p.emoji else p.short_name for p in after.get_members())}\n{after.description}",
+            ).add_field(
+                name="Connected Rooms",
+                value="\n".join(f"{c.connected_to} ({c.direction})" for c in after.get_connected()) or "None (???)",
+            ),
             fallback=ixn,
         )
 

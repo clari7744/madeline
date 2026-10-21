@@ -2,10 +2,12 @@ from logging import getLogger
 from os import listdir
 
 import aiosqlite
+from discord import Intents
 from discord.ext import commands
 
 from .cache import CacheMap
-from .config import LOCAL_DEBUG, TESTING
+from .config import DATABASE_NAME, LOCAL_DEBUG, OWNERS, TESTING
+from .mentionable_tree import MentionableTree
 from .tables import Connection, Player, RoleplayMessage, Room
 
 log = getLogger(__name__)
@@ -17,10 +19,22 @@ class Madeline(commands.Bot):
     """
 
     db: aiosqlite.Connection
-    # TODO: i hate building caches but this would unlock fuzzy searching
-    # and probably be better than hitting the db on every autocomplete...
-    # this is a bonus
     cache: CacheMap
+    tree: MentionableTree
+
+    def __init__(self, *args, **kwargs):
+        intents = Intents.default()
+        # intents.message_content = True
+        super().__init__(
+            command_prefix=commands.when_mentioned,  # _or("m!"),
+            intents=intents,
+            tree_cls=MentionableTree,
+            help_command=commands.MinimalHelpCommand(),
+            case_insensitive=True,
+            owner_ids=OWNERS,
+            owner_id=None,
+        )
+        self.db = aiosqlite.connect(DATABASE_NAME)
 
     async def setup_hook(self) -> None:
         """
@@ -36,6 +50,7 @@ class Madeline(commands.Bot):
         )
         # Set up the database (including the row factory)
         await self.setup_db()
+        log.info("Database setup & cache load complete.")
 
     async def setup_db(self, reset: bool = False) -> None:
         """
@@ -61,7 +76,7 @@ class Madeline(commands.Bot):
 
             for sql in sorted(listdir("sqls")):
                 if not sql.startswith("_") and sql.endswith(".sql"):
-                    if not sql.startswith("0") and (("test" in sql and not TESTING) or (TESTING and "test" not in sql)):
+                    if not sql.startswith("0") and ("test" in sql != TESTING):
                         continue
                     log.log(LOCAL_DEBUG, f"Loading SQL schema: {sql}")
                     with open(f"sqls/{sql}", "r") as f:

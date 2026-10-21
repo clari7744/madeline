@@ -47,6 +47,7 @@ CREATE TABLE
         sent_to INTEGER NOT NULL REFERENCES players (channel_id) ON DELETE CASCADE ON UPDATE CASCADE,
         sent_in_room TEXT NOT NULL REFERENCES rooms (room_name) ON DELETE CASCADE ON UPDATE CASCADE,
         updated_at TIMESTAMP NOT NULL,
+        message_content TEXT NOT NULL,
         message_type TEXT NOT NULL CHECK (message_type IN ('whisper', 'shout', 'rp')),
         PRIMARY KEY (original_message_id, sent_to)
     )

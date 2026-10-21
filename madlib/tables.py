@@ -501,7 +501,7 @@ class Player(Table, primary_key="channel_id"):
     async def _edit_or_send_rp(
         self,
         ixn: Interaction[Madeline],
-        message: str,
+        msg: str,
         target: Player,
         src_message: Message,
         message_type: ROLEPLAY_MESSAGE_TYPE,
@@ -514,7 +514,7 @@ class Player(Table, primary_key="channel_id"):
         ----------
         ixn : Interaction[Madeline]
             The interaction that triggered the command.
-        message : str
+        msg : str
             The message to send or edit.
         target : Player
             The player to whom the message is being sent.
@@ -532,7 +532,7 @@ class Player(Table, primary_key="channel_id"):
         """
         if not edit:
             # we know we're not editing so just go for it o7
-            sent_msg = await target.send(message, fallback=ixn)
+            sent_msg = await target.send(msg, fallback=ixn)
             return RoleplayMessage(
                 original_message_id=src_message.id,
                 received_message_id=sent_msg.id,
@@ -541,6 +541,7 @@ class Player(Table, primary_key="channel_id"):
                 sent_in_room=self.location,
                 updated_at=utcnow().isoformat(),
                 message_type=message_type,
+                message_content=msg,
             )
 
         # We are in edit mode! #
@@ -555,7 +556,7 @@ class Player(Table, primary_key="channel_id"):
         if rp_msg is None:
             log.log(LOCAL_DEBUG, f"No existing RP message found for {target} to edit.")
             return await self._edit_or_send_rp(
-                ixn, message, target, src_message=src_message, message_type=message_type, edit=False
+                ixn, msg, target, src_message=src_message, message_type=message_type, edit=False
             )
 
         # Found original cross-posted message
@@ -563,11 +564,12 @@ class Player(Table, primary_key="channel_id"):
             # Try to get and edit it!
             log.log(LOCAL_DEBUG, f"Found existing RP message for {target} to edit: {rp_msg}")
             received_msg = await target.channel.fetch_message(rp_msg.received_message_id)
-            await received_msg.edit(content=message)
+            await received_msg.edit(content=msg)
 
             # At this point it should have succeeded, it's just in the try block..because
-            log.log(LOCAL_DEBUG, f"Edited RP message for {target}: {message}")
+            log.log(LOCAL_DEBUG, f"Edited RP message for {target}: {msg}")
             rp_msg.last_updated = received_msg.edited_at or utcnow()
+            rp_msg.message_content = msg
             return rp_msg
         except Exception as e:
             # It broke! Clean up...
@@ -576,7 +578,7 @@ class Player(Table, primary_key="channel_id"):
             await rp_msg.delete()
             # Try again but don't edit
             return await self._edit_or_send_rp(
-                ixn, message, target, src_message=src_message, message_type=message_type, edit=False
+                ixn, msg, target, src_message=src_message, message_type=message_type, edit=False
             )
 
     async def rp(
@@ -721,6 +723,8 @@ class RoleplayMessage(Table, name="roleplay_messages", primary_key=("original_me
         The timestamp of the last update to the message (in ISO, timezone-aware format).
     message_type : Literal["whisper", "shout", "rp"]
         The type of the roleplay message.
+    message_content : str
+        The content of the roleplay message.
     """
 
     original_message_id: int
@@ -738,6 +742,8 @@ class RoleplayMessage(Table, name="roleplay_messages", primary_key=("original_me
     """The timestamp of the last update to the message (in ISO format)."""
     message_type: ROLEPLAY_MESSAGE_TYPE
     """The type of the roleplay message."""
+    message_content: str
+    """The content of the roleplay message."""
 
     def __str__(self) -> str:
         return f"Message {self.original_message_id} from {self.sent_by} to {self.sent_to} becoming {self.received_message_id} in {self.sent_in_room} ({self.message_type})"

@@ -14,6 +14,7 @@ from madlib import (
     is_game_channel,
 )
 from madlib.config import COMMAND_GUILDS, LOCAL_DEBUG
+from madlib.helpers import FLIP_DIRECTION
 
 log = getLogger(__name__)
 
@@ -205,49 +206,71 @@ class EnvironmentCog(commands.Cog):
             )
 
         jiggle = lambda: after.alert(  # noqa: E731
-            f"*The handle jiggles, as if somebody is trying to open the door to the **{before}** from the other side...unfortunately, this door is locked.*",
+            (
+                f"*The handle jiggles, as if somebody is trying to open the door to the **{before}** from the other side...unfortunately, this door is locked.*"
+                if not connection.hidden
+                else "*You hear a noise within the walls, but it only lasts a moment.*"
+            ),
             excludes=[player],
         )
+        hd = "You found a hidden door! However, y" if connection.hidden else "Y"
         if before.locked:
             await jiggle()
-            return await ixn.send(f"*You cannot leave {before} because it is locked.*", ephemeral=True)
+            return await ixn.send(f"*{hd}ou cannot leave **{before}** because it is locked.*", ephemeral=True)
         if after.locked:
             await jiggle()
-            return await ixn.send(f"*You cannot enter {after} because it is locked.*", ephemeral=True)
+            return await ixn.send(f"*{hd}ou cannot enter **{after}** because it is locked.*", ephemeral=True)
         # THIS IS IN A DUMB AND STUPID ORDER !
         # THE ALERTS HAPPEN BEFORE TEH ACTIONS !
         # IF YOU WANT TO KNOW WHY LOOK AT https://discord.com/channels/1555644504181317805/1555644505108123738/1561641548184289290
 
         # Let the rooms know that the player has left/entered
-        await before.alert(f"***{player.pretty_name}** leaves to {after}.*", excludes=[player])
-        await after.alert(f"***{player.pretty_name}** enters from {before}.*", excludes=[player])
+        btext = before.room_name
+        atext = after.room_name
+        if connection.hidden:
+            btext = f"somewhere in the {FLIP_DIRECTION[connection.direction]}"
+            atext = f"somewhere in the {connection.direction}"
+
+        await before.alert(f"***{player.pretty_name}** leaves to {atext}.*", excludes=[player])
+        await after.alert(f"***{player.pretty_name}** enters from {btext}.*", excludes=[player])
 
         # Recursively move followers
         # The top level is moved first
-        followers = await player.get_followers()
-        log.log(LOCAL_DEBUG, f"Moving {len(followers)} followers of {self} to {after}\n{followers}")
+        followers = await player.get_followers(recursive=not connection.hidden)
+        if connection.hidden:
+            log.log(LOCAL_DEBUG, f"Breaking follow for {len(followers)} followers of {self} to {after}\n{followers}")
+        else:
+            log.log(LOCAL_DEBUG, f"Moving {len(followers)} followers of {self} to {after}\n{followers}")
         follow_text = ""
         for follower in followers:
             leader = follower.following
-            # Follower leaves their previous room
-            follower.location = after
-            await before.alert(
-                f"***{follower.pretty_name}** leaves to {after}, following **{leader.pretty_name}**.*",
-                excludes=[follower, leader, player],
-            )
-            # The person they're following is told about it, but only if they're not the root player
-            # (root player has the special "follower.* follows")
-            if leader != player:
-                await leader.send(f"***{follower.pretty_name}** follows you to {after}.*", fallback=ixn)
-            # The top-chain is told
-            follow_text += f"\n***{follower.pretty_name}** follows.*"
-            # It is confirmed to them
-            await follower.send(f"*You follow **{leader.pretty_name}** to {after}.*", fallback=ixn)
-            # The new room is told about it
-            await after.alert(
-                f"***{follower.pretty_name}** enters from {before}, following **{leader.pretty_name}**.*",
-                excludes=[follower, leader, player],
-            )
+            if connection.hidden:
+                follower.following = None
+                await follower.send(
+                    f"*You couldn't see where {leader.pretty_name} went, so you stopped following them.*",
+                    fallback=ixn,
+                )
+                follow_text += f"\n***{follower.pretty_name}** is no longer following you.*"
+            else:
+                # Follower leaves their previous room
+                follower.location = after
+                await before.alert(
+                    f"***{follower.pretty_name}** leaves to {after}, following **{leader.pretty_name}**.*",
+                    excludes=[follower, leader, player],
+                )
+                # The person they're following is told about it, but only if they're not the root player
+                # (root player has the special "follower.* follows")
+                if leader != player:
+                    await leader.send(f"***{follower.pretty_name}** follows you to {after}.*", fallback=ixn)
+                # The top-chain is told
+                follow_text += f"\n***{follower.pretty_name}** follows.*"
+                # It is confirmed to them
+                await follower.send(f"*You follow **{leader.pretty_name}** to {after}.*", fallback=ixn)
+                # The new room is told about it
+                await after.alert(
+                    f"***{follower.pretty_name}** enters from {before}, following **{leader.pretty_name}**.*",
+                    excludes=[follower, leader, player],
+                )
 
         # Move player and their followers
         was_following = await player.move_to(after)

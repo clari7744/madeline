@@ -22,6 +22,7 @@ CREATE TABLE
         direction TEXT NOT NULL CHECK (
             direction IN ('north', 'south', 'east', 'west', 'up', 'down')
         ),
+        hidden BOOLEAN NOT NULL DEFAULT FALSE CHECK (hidden IN (0, 1)),
         PRIMARY KEY (room, connected_to)
     );
 

@@ -143,7 +143,7 @@ class Cache[CachedT: Table]:
                 # BECAUSE IT HAS A __STR__ OR AT LEAST SHOULD
                 ...
             if to_match.fuzzy:
-                result = fuzz.partial_ratio(svalue, tvalue) > 50 or tvalue in svalue
+                result = fuzz.partial_ratio(svalue, tvalue) > 80 or tvalue in svalue
                 log.log(LOCAL_DEBUG, f"FUZZY MATCH: {tvalue} vs {svalue} = {result}")
             else:
                 result = value == to_match.value
@@ -233,7 +233,6 @@ class Cache[CachedT: Table]:
             The criteria to filter the cached objects.
         """
         results = self._search(many=False, match_all=match_all, predicate=predicate, **kwargs)
-        print(results)
         if not len(results):
             log.log(LOCAL_DEBUG, f"No results found for criteria: {kwargs}")
             return None
@@ -314,6 +313,8 @@ class Cache[CachedT: Table]:
         param_list: list[tuple[str]] = []
         columns = []
         for item in items:
+            if item is None:
+                continue
             if not isinstance(item, self.type):
                 raise ValueError(
                     f"All objects must be of the same type as the cache's model_type (got a {type(item).__name__})."

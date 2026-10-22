@@ -1,8 +1,17 @@
-from discord import AppCommandOptionType, AppCommandType, Color, Embed, Interaction, app_commands
+from discord import Color, Embed, Interaction, app_commands
 from discord.ext import commands
 from DPyUtils import _and, an
 
-from madlib import Madeline, Player, PlayerTransformer, Room, RoomTransformer, SearchTerm
+from madlib import (
+    Connection,
+    ConnectionTransformer,
+    Madeline,
+    Player,
+    PlayerTransformer,
+    Room,
+    RoomTransformer,
+    SearchTerm,
+)
 from madlib.config import COMMAND_GUILDS
 from madlib.ui import DiceRollView
 
@@ -138,11 +147,14 @@ class AdminCog(commands.GroupCog, name="admin"):
             The message to send.
         """
         recipients = ixn.client.cache.get_cache(Player).get_many()
+        await ixn.send(f"Sending loudspeaker message to {len(recipients)} players...")
         if not recipients:
             return await ixn.send("No players found (the player cache is empty?).")
         for recipient in recipients:
             await recipient.send(f"**Loudspeaker:** {message}", fallback=ixn)
-        return await ixn.send(f"Sent loudspeaker message to all players.\n## Message\n{message}")
+        return await ixn.edit_original_response(
+            f"Sent loudspeaker message to all {len(recipients)} players.\n## Message\n{message}"
+        )
 
     @loudspeaker.command(name="zone")
     async def loudspeaker_zone(self, ixn: Interaction[Madeline], zone: str, message: str):
@@ -159,9 +171,12 @@ class AdminCog(commands.GroupCog, name="admin"):
         recipients = ixn.client.cache.get_cache(Player).get_many(location__zone=SearchTerm(zone, fuzzy=True))
         if not recipients:
             return await ixn.send(f"No players found in zone {zone} (either that zone doesn't exist or is empty).")
+        await ixn.send(f"Sending loudspeaker message to {len(recipients)} players in zone {zone}...")
         for recpient in recipients:
             await recpient.send(f"**Loudspeaker:** {message}", fallback=ixn)
-        return await ixn.send(f"Sent loudspeaker message to all players in zone {zone}.\n## Message\n{message}")
+        return await ixn.edit_original_response(
+            f"Sent loudspeaker message to all players in zone {zone}.\n## Message\n{message}"
+        )
 
     @loudspeaker.command(name="room")
     async def loudspeaker_room(
@@ -176,11 +191,14 @@ class AdminCog(commands.GroupCog, name="admin"):
             The message to send.
         """
         recipients = ixn.client.cache.get_cache(Player).get_many(location__room_name=room.room_name)
+        await ixn.send(f"Sending loudspeaker message to {len(recipients)} players in room {room}...")
         if not recipients:
             return await ixn.send(f"No players found in room {room} (either that room doesn't exist or is empty).")
         for recipient in recipients:
             await recipient.send(f"**Loudspeaker:** {message}", fallback=ixn)
-        return await ixn.send(f"Sent loudspeaker message to all players in room {room}.\n## Message\n{message}")
+        return await ixn.edit_original_response(
+            f"Sent loudspeaker message to {len(recipients)} players in room {room}.\n## Message\n{message}"
+        )
 
     @loudspeaker.command(name="player")
     async def loudspeaker_player(
@@ -219,7 +237,47 @@ class AdminCog(commands.GroupCog, name="admin"):
         room.locked = lock
         await room.save()
         await room.alert(f"**{room}** has been {'' if lock else 'un'}locked by an administrator.")
-        return await ixn.send(f"{'L' if lock else 'Unl'}ocked **{room}**.")
+        return await ixn.send(f"{'L' if lock else 'Unl'}ocked **{room}**.", ephemeral=True)
+
+    @app_commands.command(name="hide")
+    async def hide(
+        self,
+        ixn: Interaction[Madeline],
+        connection: app_commands.Transform[Connection, ConnectionTransformer],
+        hide: bool = None,
+    ):
+        """
+        Hide or unhide the connection between two rooms.
+
+        Parameters
+        ----------
+        connection : Connection
+            The connection to hide or unhide.
+        hide : bool, optional
+            True to hide the connection, False to unhide it. If not specified, currently hidden state will be shown.
+        """
+        ccache = self.bot.cache.get_cache(Connection)
+        otherc = connection.reversed
+
+        if hide is None:
+            return await ixn.send(
+                f"**`{connection}`** is currently **{'hidden' if connection.hidden else 'visible'}**.\n"
+                f"**`{otherc}`** is currently **{'hidden' if otherc.hidden else 'visible'}**."
+            )
+
+        if otherc is not None:
+            otherc.hidden = hide
+        connection.hidden = hide
+        await ccache.write_many([connection, otherc])
+
+        if not hide:
+            connection.room.alert(
+                f"*A door from the **{connection.room}** to the **{connection.connected_to}** has been revealed.*"
+            )
+            connection.connected_to.alert(
+                f"*A door from the **{connection.connected_to}** to the **{connection.room}** has been revealed.*"
+            )
+        return await ixn.send(f"{'H' if hide else 'Unh'}id **{connection}**.", ephemeral=True)
 
     @app_commands.command(name="show-commands")
     async def show_commands(self, ixn: Interaction[Madeline], hide_admin_only: bool = True):

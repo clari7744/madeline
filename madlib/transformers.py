@@ -4,6 +4,7 @@ from logging import getLogger
 from typing import TYPE_CHECKING
 
 from discord import Interaction, app_commands
+from discord.utils import MISSING
 
 from .cache import SearchTerm
 from .config import LOCAL_DEBUG
@@ -34,10 +35,10 @@ class RoomTransformer(app_commands.Transformer):
             The validated Room object.
         """
         log.log(LOCAL_DEBUG, f"Trying to transform '{room_name}' into a Room")
-        try:
-            return await ixn.client.cache.get_cache(Room).fetch(room_name)
-        except ValueError as e:
-            raise FailedTransform(f"Invalid room name '{room_name}': {e}")
+        room = ixn.client.cache.get_cache(Room).get_first(room_name=SearchTerm(room_name, ignore_case=True))
+        if room is not None:
+            return room
+        raise FailedTransform(f"Invalid room name `{room_name}`.")
 
     async def autocomplete(self, ixn: Interaction[Madeline], current_name: str) -> list[app_commands.Choice[str]]:
         """
@@ -78,13 +79,16 @@ class AdjacentRoomTransformer(app_commands.Transformer):
         Connection
             The player's room, connected room, and direction of connection.
         """
-        player = await Player.from_interaction(ixn)
-        try:
-            return await ixn.client.cache.get_cache(Connection).fetch((player.location.room_name, adj_room_name))
-        except ValueError as e:
-            raise FailedTransform(
-                f"There is no direct connection between '{player.location.room_name}' and '{adj_room_name}': {e}"
-            )
+        current_player = await Player.from_interaction(ixn)
+        conn = ixn.client.cache.get_cache(Connection).get_first(
+            room__room_name=current_player.location.room_name,
+            connected_to__room_name=SearchTerm(adj_room_name, ignore_case=True),
+        )
+        if conn is not None:
+            return conn
+        raise FailedTransform(
+            f"There is no direct connection between `{current_player.location.room_name}` and `{adj_room_name}`."
+        )
 
     async def autocomplete(self, ixn: Interaction[Madeline], current_name: str) -> list[app_commands.Choice[str]]:
         """
@@ -109,21 +113,82 @@ class AdjacentRoomTransformer(app_commands.Transformer):
             log.info(f"Failed to fetch player for autocomplete: {e}")
             return []
 
-        check = {}
-        if current_name in FLIP_DIRECTION:
-            check["direction"] = current_name
-        elif current_name:
-            check["connected_to__room_name"] = SearchTerm(current_name, fuzzy=True)
-        log.log(LOCAL_DEBUG, f"Autocomplete check: {check}")
-
         matching_rooms = ixn.client.cache.get_cache(Connection).get_many(
-            room__room_name=player.location.room_name, **check
+            room__room_name=player.location.room_name,
+            hidden=False,
+            direction=current_name if current_name in FLIP_DIRECTION else MISSING,
+            connected_to__room_name=(
+                SearchTerm(current_name, fuzzy=True) if current_name and current_name not in FLIP_DIRECTION else MISSING
+            ),
         )
         return [
             app_commands.Choice(
                 name=f"{conn.connected_to.room_name} ({conn.direction})", value=conn.connected_to.room_name
             )
             for conn in matching_rooms
+        ][:25]
+
+
+class ConnectionTransformer(app_commands.Transformer):
+    async def transform(self, ixn: Interaction[Madeline], room_name: str) -> Connection:
+        """
+        Validates a connection between two rooms split by |.
+
+        Parameters
+        ----------
+        ixn : Interaction
+            The interaction object.
+        room_name : str
+            The names of the rooms to validate the connection with.
+
+        Returns
+        -------
+        Connection
+            The Connection object representing the connection between the two rooms.
+        """
+        try:
+            room1_name, room2_name = map(str.strip, room_name.split("|"))
+        except ValueError:
+            raise FailedTransform("Invalid connection format. Use 'room1 | room2'.")
+        try:
+            return await ixn.client.cache.get_cache(Connection).fetch((room1_name, room2_name))
+        except ValueError as e:
+            raise FailedTransform(f"There is no direct connection between `{room1_name}` and `{room2_name}`.")
+
+    async def autocomplete(self, ixn: Interaction[Madeline], current_name: str) -> list[app_commands.Choice[str]]:
+        """
+        Autocomplete connections based on the current input.
+
+        Parameters
+        ----------
+        ixn : Interaction
+            The interaction object.
+        current_name : str
+            The current input string.
+
+        Returns
+        -------
+        list[app_commands.Choice[str]]
+            A list of choices for the autocomplete.
+        """
+        if "|" in current_name:
+            room1_name, room2_name = map(str.strip, current_name.split("|", 1))
+            matching_connections = ixn.client.cache.get_cache(Connection).get_many(
+                room__room_name=SearchTerm(room1_name, fuzzy=True),
+                connected_to__room_name=SearchTerm(room2_name, fuzzy=True),
+            )
+        else:
+            matching_connections = ixn.client.cache.get_cache(Connection).get_many(
+                match_all=False,
+                room__room_name=SearchTerm(current_name, fuzzy=True),
+                connected_to__room_name=SearchTerm(current_name, fuzzy=True),
+            )
+        return [
+            app_commands.Choice(
+                name=f"{conn.room.room_name}->{conn.connected_to.room_name} ({conn.direction})",
+                value=f"{conn.room.room_name}|{conn.connected_to.room_name}",
+            )
+            for conn in matching_connections
         ][:25]
 
 
@@ -146,9 +211,10 @@ class PlayerTransformer(app_commands.Transformer):
         """
         log.log(LOCAL_DEBUG, f"Trying to transform '{channel_id}' into a Player")
         try:
-            return await Player.from_interaction(ixn)
+            return await ixn.client.cache.get_cache(Player).fetch(int(channel_id))
         except ValueError as e:
-            raise FailedTransform(f"Invalid player channel '{channel_id}': {e}")
+            log.log(LOCAL_DEBUG, f"Failed to transform channel ID '{channel_id}' into a Player: {e}")
+            raise FailedTransform(f"Invalid player channel `{channel_id}`.")
 
     async def autocomplete(self, ixn: Interaction[Madeline], current_name: str) -> list[app_commands.Choice[str]]:
         """

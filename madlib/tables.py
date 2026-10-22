@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import KW_ONLY, asdict, dataclass, field
 from datetime import datetime
-from logging import getLogger
+from logging import INFO, getLogger
 from typing import TYPE_CHECKING, Optional
 
 from discord import Interaction, Message, TextChannel
@@ -216,7 +216,7 @@ class Room(Table, primary_key="room_name"):
             members = [member for member in members if member not in excludes]
         return members
 
-    def get_connected(self, direction: DIRECTION = MISSING) -> list[Connection]:
+    def get_connected(self, direction: DIRECTION = MISSING, include_hidden: bool = False) -> list[Connection]:
         """
         Get a list of rooms connected to this room.
 
@@ -224,19 +224,17 @@ class Room(Table, primary_key="room_name"):
         ----------
         direction : Optional[DIRECTIONS], optional
             The direction to filter the connected rooms by (default is None).
+        include_hidden : bool, optional
+            Whether to include hidden connections (default is False).
 
         Returns
         -------
         list[Connection]
             A list of connections with this room as the primary.
         """
-        connection_cache = self.bot.cache.get_cache(Connection)
-        # in theory direction=None should return all directions but let's see
-        connections = connection_cache.get_many(room=self, direction=direction)
-        # if direction:
-        #     connections = connection_cache.get_many(room=self, direction=direction)
-        # else:
-        #     connections = connection_cache.get_many(room=self)
+        ccache = self.bot.cache.get_cache(Connection)
+        # MISSING returns all, so missing direction or including hidden will return all that match the other attributes
+        connections = ccache.get_many(room=self, direction=direction, hidden=MISSING if include_hidden else False)
         return connections
 
     async def alert(self, message: str, excludes: list[Player] = None):
@@ -271,7 +269,7 @@ class Room(Table, primary_key="room_name"):
         excludes : Optional[list[Player]], optional
             A list of players to exclude from the alert (default is None).
         """
-        rooms = [self] + [conn.connected_to for conn in self.get_connected()]
+        rooms = [self] + [conn.connected_to for conn in self.get_connected(include_hidden=True)]
         for room in rooms:
             await room.alert(message, excludes=excludes)
 
@@ -648,7 +646,7 @@ class Player(Table, primary_key="channel_id"):
         elif message_type == "shout":
             you_say = f"*You shout:* {message}"
             they_receive = f"***{self.pretty_name}** shouts from {self.location}:* {message}"
-            for r in self.location.get_connected():
+            for r in self.location.get_connected(include_hidden=True):
                 log.log(
                     LOCAL_DEBUG,
                     f"{self.short_name} is shouting to connected room {r.connected_to} from {self.location}",
@@ -687,7 +685,6 @@ class Player(Table, primary_key="channel_id"):
 
         for member in addl_recipients:
             await member.send(addl_recipients_see, fallback=ixn)
-        print(targets, addl_recipients)
         if not targets and not addl_recipients:
             log.log(LOCAL_DEBUG, f"{self} is alone in {self.location}, saving dummy message {src_message}")
             rp_msgs.append(
@@ -707,7 +704,10 @@ class Player(Table, primary_key="channel_id"):
                 f"Saved dummy message for {self} in {self.location} with original_message_id={src_message.id}",
             )
 
-        print(f"Sent {len(rp_msgs)} roleplay messages for {message_type} from {self} to {[m.sent_to for m in rp_msgs]}")
+        log.log(
+            INFO,
+            f"Sent {len(rp_msgs)} roleplay messages for {message_type} from {self} to {[m.sent_to.short_name for m in rp_msgs]}",
+        )
         await self.bot.cache.get_cache(RoleplayMessage).write_many(rp_msgs)
         return rp_msgs
 
@@ -725,6 +725,8 @@ class Connection(Table, primary_key=("room", "connected_to")):
         The room to which the connection leads.
     direction : DIRECTIONS
         The direction of the connection (north, south, east, west, up, down).
+    hidden : bool
+        Whether the connection is hidden.
     """
 
     room: Room
@@ -734,9 +736,24 @@ class Connection(Table, primary_key=("room", "connected_to")):
     _: KW_ONLY
     direction: DIRECTION
     """The direction of the connection (north, south, east, west, up, down)."""
+    hidden: bool
+    """Whether the connection is hidden."""
 
     def __str__(self) -> str:
         return f"{self.room} -> {self.connected_to} ({self.direction})"
+
+    @property
+    def reversed(self) -> Connection | None:
+        """
+        Get the reversed connection (i.e., the connection from the connected room back to this room).
+
+        Returns
+        -------
+        Connection | None
+            The reversed connection if it exists, otherwise None.
+        """
+        ccache = self.bot.cache.get_cache(Connection)
+        return ccache.get_first(room=self.connected_to, connected_to=self.room)
 
 
 @dataclass

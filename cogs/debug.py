@@ -4,11 +4,13 @@ import DPyUtils
 import tabulate
 from discord import Color, Interaction, PartialEmoji, TextChannel, app_commands
 from discord.ext import commands
+from discord.utils import MISSING
 
 from madlib import (
     DIRECTION,
     FLIP_DIRECTION,
     Connection,
+    ConnectionTransformer,
     Madeline,
     Player,
     PlayerTransformer,
@@ -65,43 +67,6 @@ class ZoneMgmtCog(DebugCog, name="zone"):
         await ixn.client.db.commit()
         return await ixn.send(f"Added `{zone_name}` to the database.")
 
-    @app_commands.command(name="remove")
-    async def zone_remove(self, ixn: Interaction[Madeline], zone: str):
-        """
-        Remove a zone from the database.
-
-        Parameters
-        ----------
-        zone : str
-            The name of the zone to remove.
-        """
-        async with ixn.client.db.cursor() as c:
-            await c.execute("DELETE FROM zones WHERE zone_name=? RETURNING zone_name", (zone,))
-            res = await c.fetchone()
-            if res is None:
-                return await ixn.send(f"Zone `{zone}` not found in the database.", ephemeral=True)
-        await ixn.client.db.commit()
-        return await ixn.send(f"Removed `{zone}` from the database.")
-
-    @app_commands.command(name="list")
-    async def zone_list(self, ixn: Interaction[Madeline]):
-        """
-        List all zones in the database.
-        """
-        async with ixn.client.db.cursor() as c:
-            await c.execute("SELECT zone_name, description FROM zones")
-            zones = await c.fetchall()
-
-        if not zones:
-            return await ixn.send("No zones found in the database.")
-
-        zlist = tabulate.tabulate(
-            [tuple(z) for z in zones],
-            headers=["Zone Name", "Description"],
-            tablefmt="fancy_grid",
-        )
-        return await ixn.send(f"## Saved Zones\n```\n{zlist}```")
-
     @app_commands.command(name="color")
     async def zone_color(self, ixn: Interaction[Madeline], zone: str, color: str):
         """
@@ -123,6 +88,43 @@ class ZoneMgmtCog(DebugCog, name="zone"):
             r.color = clr
         await rcache.write_many(rooms)
         return await ixn.send(f"Set all rooms in `{rooms[0].zone}` to `{color}`.")
+
+    @app_commands.command(name="list")
+    async def zone_list(self, ixn: Interaction[Madeline]):
+        """
+        List all zones in the database.
+        """
+        async with ixn.client.db.cursor() as c:
+            await c.execute("SELECT zone_name, description FROM zones")
+            zones = await c.fetchall()
+
+        if not zones:
+            return await ixn.send("No zones found in the database.")
+
+        zlist = tabulate.tabulate(
+            [tuple(z) for z in zones],
+            headers=["Zone Name", "Description"],
+            tablefmt="fancy_grid",
+        )
+        return await ixn.send(f"## Saved Zones\n```\n{zlist}```")
+
+    @app_commands.command(name="remove")
+    async def zone_remove(self, ixn: Interaction[Madeline], zone: str):
+        """
+        Remove a zone from the database.
+
+        Parameters
+        ----------
+        zone : str
+            The name of the zone to remove.
+        """
+        async with ixn.client.db.cursor() as c:
+            await c.execute("DELETE FROM zones WHERE zone_name=? RETURNING zone_name", (zone,))
+            res = await c.fetchone()
+            if res is None:
+                return await ixn.send(f"Zone `{zone}` not found in the database.", ephemeral=True)
+        await ixn.client.db.commit()
+        return await ixn.send(f"Removed `{zone}` from the database.")
 
 
 class RoomMgmtCog(DebugCog, name="room"):
@@ -165,19 +167,6 @@ class RoomMgmtCog(DebugCog, name="room"):
         )
         await r.save(ixn.client)
         return await ixn.send(f"Added `{room_name}` to the database.")
-
-    @app_commands.command(name="remove")
-    async def room_remove(self, ixn: Interaction[Madeline], room: app_commands.Transform[Room, RoomTransformer]):
-        """
-        Remove a room from the database.
-
-        Parameters
-        ----------
-        room : Room
-            The room to remove.
-        """
-        await room.delete()
-        return await ixn.send(f"Removed `{room.room_name}` from the database.")
 
     @app_commands.command(name="update")
     async def room_update(
@@ -239,6 +228,19 @@ class RoomMgmtCog(DebugCog, name="room"):
 
         await ixn.send(content=rpaginator.pages[0], view=TablePaginatorView(author=ixn.user, paginator=rpaginator))
 
+    @app_commands.command(name="remove")
+    async def room_remove(self, ixn: Interaction[Madeline], room: app_commands.Transform[Room, RoomTransformer]):
+        """
+        Remove a room from the database.
+
+        Parameters
+        ----------
+        room : Room
+            The room to remove.
+        """
+        await room.delete()
+        return await ixn.send(f"Removed `{room.room_name}` from the database.")
+
 
 class PlayerMgmtCog(DebugCog, name="player"):
     """Manage players in the database."""
@@ -296,21 +298,6 @@ class PlayerMgmtCog(DebugCog, name="player"):
         )
         await p.save(ixn.client)
         return await ixn.send(f"Added `{short_name}` to the database.")
-
-    @app_commands.command(name="remove")
-    async def player_remove(
-        self, ixn: Interaction[Madeline], player: app_commands.Transform[Player, PlayerTransformer]
-    ):
-        """
-        Remove a player from the database.
-
-        Parameters
-        ----------
-        player : Player
-            The player to remove.
-        """
-        await player.delete()
-        return await ixn.send(f"Removed `{player.short_name}` from the database.")
 
     @app_commands.command(name="update")
     async def player_update(
@@ -378,11 +365,16 @@ class PlayerMgmtCog(DebugCog, name="player"):
         return await ixn.send(f"Updated `{player.short_name}` in the database.")
 
     @app_commands.command(name="list")
-    async def player_list(self, ixn: Interaction[Madeline]):
+    async def player_list(self, ixn: Interaction[Madeline], room: app_commands.Transform[Room, RoomTransformer] = None):
         """
         List all players in the cache.
+
+        Parameters
+        ----------
+        room : Room, optional
+            The room to filter players by (default is None, which lists all players).
         """
-        players = self.bot.cache.get_cache(Player).get_many()
+        players = self.bot.cache.get_cache(Player).get_many(location=room or MISSING)
 
         if not players:
             return await ixn.send("No players found in the cache.")
@@ -397,6 +389,21 @@ class PlayerMgmtCog(DebugCog, name="player"):
         # Send first page with navigation view
         await ixn.send(content=ppaginator.pages[0], view=TablePaginatorView(author=ixn.user, paginator=ppaginator))
 
+    @app_commands.command(name="remove")
+    async def player_remove(
+        self, ixn: Interaction[Madeline], player: app_commands.Transform[Player, PlayerTransformer]
+    ):
+        """
+        Remove a player from the database.
+
+        Parameters
+        ----------
+        player : Player
+            The player to remove.
+        """
+        await player.delete()
+        return await ixn.send(f"Removed `{player.short_name}` from the database.")
+
 
 class ConnectionMgmtCog(DebugCog, name="connection"):
     """Manage connections between rooms."""
@@ -408,6 +415,7 @@ class ConnectionMgmtCog(DebugCog, name="connection"):
         room: app_commands.Transform[Room, RoomTransformer],
         direction: DIRECTION,
         connected_to: app_commands.Transform[Room, RoomTransformer],
+        hidden: bool = False,
         bidirectional: bool = True,
     ):
         """
@@ -421,57 +429,117 @@ class ConnectionMgmtCog(DebugCog, name="connection"):
             The room it connects to.
         direction : str
             The direction of the connection.
+        hidden : bool, optional
+            Whether the connection is hidden (default is False).
+        bidirectional : bool, optional
+            Whether the connection is bidirectional (default is True).
         """
         if room == connected_to:
             return await ixn.send("A room cannot connect to itself.", ephemeral=True)
-        conns = [Connection(room=room, connected_to=connected_to, direction=direction)]
+        conns = [Connection(room=room, connected_to=connected_to, direction=direction, hidden=hidden)]
         if bidirectional:
-            conns.append(Connection(room=connected_to, connected_to=room, direction=FLIP_DIRECTION[direction]))
+            conns.append(
+                Connection(room=connected_to, connected_to=room, direction=FLIP_DIRECTION[direction], hidden=hidden)
+            )
         await self.bot.cache.get_cache(Connection).write_many(conns)
         return await ixn.send(
-            f"Added connection from `{room.room_name}` to `{connected_to.room_name}` ({'bi' if bidirectional else 'uni'}directionally)."
+            f"Added connection from `{room.room_name}` to `{connected_to.room_name}` ({'bi' if bidirectional else 'uni'}directionally). Hidden: {hidden}."
         )
+
+    @app_commands.command(name="update")
+    async def connection_update(
+        self,
+        ixn: Interaction[Madeline],
+        connection: app_commands.Transform[Connection, ConnectionTransformer],
+        direction: DIRECTION | None = None,
+        hidden: bool | None = None,
+        bidirectional: bool = False,
+    ):
+        """
+        Update a connection between two rooms in the database.
+
+        Parameters
+        ----------
+        connection : Connection
+            The connection to update.
+        direction : str, optional
+            The new direction of the connection.
+        hidden : bool, optional
+            Whether the connection is hidden (default is False).
+        bidirectional : bool, optional
+            Whether to update the connection bidirectionally (default is False).
+        """
+        updates = {
+            "direction": direction,
+            "hidden": hidden,
+        }
+        updates = {k: v for k, v in updates.items() if v is not None}
+        if not updates:
+            return await ixn.send("No updates provided.", ephemeral=True)
+
+        for key, value in updates.items():
+            setattr(connection, key, value)
+
+        saves = [connection]
+        if bidirectional:
+            reverse = connection.reversed
+            for key, value in updates.items():
+                if key == "direction":
+                    value = FLIP_DIRECTION[value]
+                setattr(reverse, key, value)
+            saves.append(reverse)
+        await self.bot.cache.get_cache(Connection).write_many(saves)
+        return await ixn.send(f"Updated `{connection}` in the database.")
+
+    @app_commands.command(name="list")
+    async def connection_list(
+        self, ixn: Interaction[Madeline], room: app_commands.Transform[Room, RoomTransformer] = None
+    ):
+        """
+        List all connections in the cache.
+
+        Parameters
+        ----------
+        room : Room, optional
+            The room to filter connections by (default is None, which lists all connections).
+        """
+        connections = ixn.client.cache.get_cache(Connection).get_many(room=room or MISSING)
+        if not connections:
+            return await ixn.send("No connections found in the cache.")
+
+        cpaginator = TablePaginator(
+            headers=["Room", "Connected To", "Direction", "Hidden"],
+            rows=[[c.room, c.connected_to, c.direction, "Yes" if c.hidden else "No"] for c in connections],
+            max_rows_per_page=8,
+        )
+        await ixn.send(content=cpaginator.pages[0], view=TablePaginatorView(author=ixn.user, paginator=cpaginator))
 
     @app_commands.command(name="remove")
     async def connection_remove(
         self,
         ixn: Interaction[Madeline],
-        room_name: app_commands.Transform[Room, RoomTransformer],
-        connected_to: app_commands.Transform[Room, RoomTransformer],
+        connection: app_commands.Transform[Connection, ConnectionTransformer],
+        bidirectional: bool = False,
     ):
         """
         Remove a connection between two rooms in the database.
 
         Parameters
         ----------
-        room_name : Room
-            The name of the room.
-        connected_to : Room
-            The name of the room it connects to.
+        connection : Connection
+            The connection to remove.
+        bidirectional : bool, optional
+            Whether to remove the connection bidirectionally, if it exists (default is False).
         """
-        conn = self.bot.cache.get_cache(Connection).get((room_name.room_name, connected_to.room_name))
-        if not conn:
-            return await ixn.send("Connection not found in the database.", ephemeral=True)
-        await conn.delete()
+        reverse = None
+        if bidirectional:
+            reverse = connection.reversed
+        removed = [connection, reverse]
+        await self.bot.cache.get_cache(Connection).delete_many(removed)
         return await ixn.send(
-            f"Removed connection from `{room_name.room_name}` to `{connected_to.room_name}` in the database."
+            f"Removed the **`{connection}`** connection from the database."
+            + (f"\nAlso removed the **`{reverse}`** connection." if reverse else "")
         )
-
-    @app_commands.command(name="list")
-    async def connection_list(self, ixn: Interaction[Madeline]):
-        """
-        List all connections in the cache.
-        """
-        connections = ixn.client.cache.get_cache(Connection).get_many()
-        if not connections:
-            return await ixn.send("No connections found in the cache.")
-
-        cpaginator = TablePaginator(
-            headers=["Room", "Connected To", "Direction"],
-            rows=[[c.room, c.connected_to, c.direction] for c in connections],
-            max_rows_per_page=8,
-        )
-        await ixn.send(content=cpaginator.pages[0], view=TablePaginatorView(author=ixn.user, paginator=cpaginator))
 
 
 class DatabaseMgmtCog(DebugCog, name="database"):

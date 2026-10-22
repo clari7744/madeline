@@ -172,7 +172,6 @@ class CommunicationCog(commands.Cog):
         rpm_cache = self.bot.cache.get_cache(RoleplayMessage)
         log.log(LOCAL_DEBUG, f"Context menu edit roleplay message invoked by {player} on message {message.id}")
         example_msg = rpm_cache.get_first(original_message_id=message.id)
-        print(example_msg)
         if example_msg is None:
             raise app_commands.CheckFailure("This is not a roleplay message.")
         await ixn.response.send_modal(EditRoleplayMessageModal(player, message, example_msg.message_type))

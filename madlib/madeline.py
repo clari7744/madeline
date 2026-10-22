@@ -37,10 +37,6 @@ class Madeline(commands.Bot):
         self.db = aiosqlite.connect(DATABASE_NAME)
 
     async def setup_hook(self) -> None:
-        """
-        Called when the bot is ready to set up its commands and cogs.
-        """
-
         # Create caches
         self.cache = (
             CacheMap(self, Room)

@@ -161,6 +161,8 @@ class Room(Table, primary_key="room_name"):
         The zone the room is in.
     description : str
         A description of the room.
+    color : int
+        The color of the room.
     locked : bool
         Whether the room is locked.
     """
@@ -172,6 +174,8 @@ class Room(Table, primary_key="room_name"):
     """The zone the room is in."""
     description: str
     """A description of the room."""
+    color: int
+    """The color of the room."""
     locked: bool
     """Whether the room is locked."""
 
@@ -428,7 +432,7 @@ class Player(Table, primary_key="channel_id"):
             return await channel.send(message, **kwargs)
         if fallback is None:
             raise ValueError("No fallback provided for sending message.")
-        return await fallback.send(
+        msg = await fallback.send(
             f"Failed to send message to {self} because their channel was not found.\n## Original Message\n{message}",
             **kwargs,
         )
@@ -560,6 +564,14 @@ class Player(Table, primary_key="channel_id"):
             )
 
         # Found original cross-posted message
+        if rp_msg.received_message_id == 0:
+            log.log(
+                LOCAL_DEBUG,
+                f"Found existing RP message for {target} to edit, but it has no received_message_id (user was alone in channel at time of sending).",
+            )
+            return await self._edit_or_send_rp(
+                ixn, msg, target, src_message=src_message, message_type=message_type, edit=False
+            )
         try:
             # Try to get and edit it!
             log.log(LOCAL_DEBUG, f"Found existing RP message for {target} to edit: {rp_msg}")
@@ -608,6 +620,9 @@ class Player(Table, primary_key="channel_id"):
             The player to whom the message is being sent. Required for whispers (default is None).
         """
         rpm_cache = self.bot.cache.get_cache(RoleplayMessage)
+        if not ixn.response.is_done():
+            # MUST BE DEFERRED otherwise ixn.send returns an interactioncallbackresponse and i did not handle those properly
+            await ixn.response.defer(thinking=True)
 
         you_say = f"**You:** {message}"
         targets = self.location.get_members(excludes=[self])
@@ -632,6 +647,7 @@ class Player(Table, primary_key="channel_id"):
             addl_recipients_see = f"***{self.pretty_name}** whispers something to **{target.pretty_name}***"
         elif message_type == "shout":
             you_say = f"*You shout:* {message}"
+            they_receive = f"***{self.pretty_name}** shouts from {self.location}:* {message}"
             for r in self.location.get_connected():
                 log.log(
                     LOCAL_DEBUG,
@@ -657,6 +673,7 @@ class Player(Table, primary_key="channel_id"):
         # src_message is either the message or None if it failed to edit.
         # if none treat is like new.
         if src_message is None:
+            log.log(LOCAL_DEBUG, f"Sending new roleplay message for {message_type} from {self}")
             edit = False
             src_message = await ixn.send(you_say)
 
@@ -670,7 +687,27 @@ class Player(Table, primary_key="channel_id"):
 
         for member in addl_recipients:
             await member.send(addl_recipients_see, fallback=ixn)
+        print(targets, addl_recipients)
+        if not targets and not addl_recipients:
+            log.log(LOCAL_DEBUG, f"{self} is alone in {self.location}, saving dummy message {src_message}")
+            rp_msgs.append(
+                RoleplayMessage(
+                    original_message_id=src_message.id,
+                    received_message_id=0,
+                    sent_by=self,
+                    sent_to=self,
+                    sent_in_room=self.location,
+                    updated_at=utcnow().isoformat(),
+                    message_type=message_type,
+                    message_content=message,
+                )
+            )
+            log.log(
+                LOCAL_DEBUG,
+                f"Saved dummy message for {self} in {self.location} with original_message_id={src_message.id}",
+            )
 
+        print(f"Sent {len(rp_msgs)} roleplay messages for {message_type} from {self} to {[m.sent_to for m in rp_msgs]}")
         await self.bot.cache.get_cache(RoleplayMessage).write_many(rp_msgs)
         return rp_msgs
 

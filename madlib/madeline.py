@@ -76,7 +76,7 @@ class Madeline(commands.Bot):
 
             for sql in sorted(listdir("sqls")):
                 if not sql.startswith("_") and sql.endswith(".sql"):
-                    if not sql.startswith("0") and ("test" in sql != TESTING):
+                    if not sql.startswith("0") and (("test" in sql) != TESTING):
                         continue
                     log.log(LOCAL_DEBUG, f"Loading SQL schema: {sql}")
                     with open(f"sqls/{sql}", "r") as f:

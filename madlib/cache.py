@@ -133,7 +133,7 @@ class Cache[CachedT: Table]:
                 svalue = svalue.lower()
                 tvalue = tvalue.lower()
             log.log(LOCAL_DEBUG, f"STRINGS: Matching search term: {tvalue} against known value: {svalue}")
-            # we're doing this LATER. please don't give this a table i will scream
+            # we're doing this LATER. please don't give this a table i will scream (edit: tables will work great actually)
             # (can you tell i got tired?)
             if isinstance(to_match.value, Table):
                 # THEN NOTHING
@@ -144,17 +144,17 @@ class Cache[CachedT: Table]:
                 ...
             if to_match.fuzzy:
                 result = fuzz.partial_ratio(svalue, tvalue) > 50 or tvalue in svalue
-                log.log(LOCAL_DEBUG, f"FUZZY MATCH: {svalue} vs {tvalue} = {result}")
+                log.log(LOCAL_DEBUG, f"FUZZY MATCH: {tvalue} vs {svalue} = {result}")
             else:
                 result = value == to_match.value
-                log.log(LOCAL_DEBUG, f"EXACT MATCH: {value} vs {to_match.value} = {result}")
+                log.log(LOCAL_DEBUG, f"EXACT MATCH: {to_match.value} vs {value} = {result}")
                 if to_match.ignore_case:
                     result = svalue == tvalue
-                    log.log(LOCAL_DEBUG, f"IGNORE CASE: {svalue.lower()} vs {tvalue.lower()} = {result}")
+                    log.log(LOCAL_DEBUG, f"IGNORE CASE: {tvalue.lower()} vs {svalue.lower()} = {result}")
             if to_match.negative:
                 result = not result
-                log.log(LOCAL_DEBUG, f"NEGATE MATCH: {svalue} vs {tvalue} = {result}")
-            log.log(LOCAL_DEBUG, f"FINAL MATCH: {svalue} vs {tvalue} = {result}")
+                log.log(LOCAL_DEBUG, f"NEGATE MATCH: {tvalue} vs {svalue} = {result}")
+            log.log(LOCAL_DEBUG, f"FINAL MATCH: {tvalue} vs {svalue} = {result}")
             return result
 
         def _pred(item: CachedT) -> bool:
@@ -233,6 +233,7 @@ class Cache[CachedT: Table]:
             The criteria to filter the cached objects.
         """
         results = self._search(many=False, match_all=match_all, predicate=predicate, **kwargs)
+        print(results)
         if not len(results):
             log.log(LOCAL_DEBUG, f"No results found for criteria: {kwargs}")
             return None

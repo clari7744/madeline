@@ -10,6 +10,7 @@ CREATE TABLE
         room_name TEXT NOT NULL,
         zone TEXT NOT NULL REFERENCES zones (zone_name) ON DELETE CASCADE ON UPDATE CASCADE,
         description TEXT DEFAULT NULL,
+        color INTEGER DEFAULT NULL,
         locked BOOLEAN NOT NULL DEFAULT FALSE CHECK (locked IN (0, 1)),
         PRIMARY KEY (room_name)
     );

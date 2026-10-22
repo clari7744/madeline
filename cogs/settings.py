@@ -101,10 +101,10 @@ class SettingsCog(commands.Cog):
         await player.save()
 
         await player.location.alert(
-            f'***{player.pretty_name}** has changed their appearance from "{old_appearance}" to "{new_appearance}".*',
+            f'***{player.pretty_name}** has changed their appearance from "*{old_appearance}*" to "*{new_appearance}*".*',
             excludes=[player],
         )
-        return await ixn.send(f'*Changed your appearance from "{old_appearance}" to "{new_appearance}".*')
+        return await ixn.send(f'*Changed your appearance from "*{old_appearance}*" to "*{new_appearance}*".*')
 
     @app_commands.command(name="action")
     @app_commands.guild_only()

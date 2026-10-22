@@ -9,7 +9,7 @@ from discord import utils
 from DPyUtils import load_extensions
 
 from madlib import Madeline
-from madlib.config import LOCAL_DEBUG, TOKEN
+from madlib.config import CURRENT_DEBUG, LOCAL_DEBUG, TOKEN
 
 log = getLogger(__name__)
 
@@ -20,5 +20,5 @@ async def main():
         await bot.start(TOKEN)
 
 
-utils.setup_logging(level=17)
+utils.setup_logging(level=CURRENT_DEBUG)
 asyncio.run(main())

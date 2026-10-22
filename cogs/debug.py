@@ -2,7 +2,7 @@ from logging import getLogger
 
 import DPyUtils
 import tabulate
-from discord import Interaction, PartialEmoji, TextChannel, app_commands
+from discord import Color, Interaction, PartialEmoji, TextChannel, app_commands
 from discord.ext import commands
 
 from madlib import (
@@ -14,6 +14,7 @@ from madlib import (
     PlayerTransformer,
     Room,
     RoomTransformer,
+    SearchTerm,
 )
 from madlib.config import GUILD_ID, LOCAL_DEBUG
 from madlib.ui import TablePaginator, TablePaginatorView
@@ -101,6 +102,28 @@ class ZoneMgmtCog(DebugCog, name="zone"):
         )
         return await ixn.send(f"## Saved Zones\n```\n{zlist}```")
 
+    @app_commands.command(name="color")
+    async def zone_color(self, ixn: Interaction[Madeline], zone: str, color: str):
+        """
+        Set the color of a zone.
+
+        Parameters
+        ----------
+        zone : str
+            The name of the zone.
+        color : str
+            The color to set (hex or int).
+        """
+        rcache = self.bot.cache.get_cache(Room)
+        if color.isdigit():
+            color = hex(int(color))
+        clr = Color.from_str(color).value
+        rooms = rcache.get_many(zone=SearchTerm(zone, fuzzy=True))
+        for r in rooms:
+            r.color = clr
+        await rcache.write_many(rooms)
+        return await ixn.send(f"Set all rooms in `{rooms[0].zone}` to `{color}`.")
+
 
 class RoomMgmtCog(DebugCog, name="room"):
     """Manage rooms in the database."""
@@ -112,6 +135,7 @@ class RoomMgmtCog(DebugCog, name="room"):
         room_name: str,
         zone: str,
         description: str,
+        color: str = "#000000",
         locked: bool = False,
     ):
         """
@@ -125,12 +149,18 @@ class RoomMgmtCog(DebugCog, name="room"):
             The zone of the room.
         description : str
             The description of the room.
+        color : str, optional
+            The color of the room (default is "#000000").
+        locked : bool, optional
+            Whether the room is locked (default is False).
         """
-
+        if color.isdigit():
+            color = hex(int(color))
         r = Room(
             room_name=room_name,
             zone=zone,
             description=description,
+            color=Color.from_str(color).value,
             locked=locked,
         )
         await r.save(ixn.client)
@@ -156,6 +186,7 @@ class RoomMgmtCog(DebugCog, name="room"):
         room: app_commands.Transform[Room, RoomTransformer],
         zone: str | None = None,
         description: str | None = None,
+        color: str | None = None,
         locked: bool | None = None,
     ):
         """
@@ -169,12 +200,15 @@ class RoomMgmtCog(DebugCog, name="room"):
             The new zone of the room.
         description : str, optional
             The new description of the room.
+        color : str, optional
+            The new color of the room.
         locked : bool, optional
             The new locked status of the room.
         """
         updates = {
             "zone": zone,
             "description": description,
+            "color": color,
             "locked": locked,
         }
         updates = {k: v for k, v in updates.items() if v is not None}
@@ -204,13 +238,6 @@ class RoomMgmtCog(DebugCog, name="room"):
         )
 
         await ixn.send(content=rpaginator.pages[0], view=TablePaginatorView(author=ixn.user, paginator=rpaginator))
-
-        # rlist = tabulate.tabulate(
-        #     [(r.room_name, r.zone, r.description) for r in rooms],
-        #     headers=["Room Name", "Zone", "Description"],
-        #     tablefmt="fancy_grid",
-        # )
-        # return await ixn.send(f"## Cached Rooms\n```\n{rlist}```")
 
 
 class PlayerMgmtCog(DebugCog, name="player"):
@@ -369,12 +396,6 @@ class PlayerMgmtCog(DebugCog, name="player"):
 
         # Send first page with navigation view
         await ixn.send(content=ppaginator.pages[0], view=TablePaginatorView(author=ixn.user, paginator=ppaginator))
-        # plist = tabulate.tabulate(
-        #     [(p.short_name, p.full_name, str(p.location), str(p.following)) for p in players],
-        #     headers=["Short Name", "Full Name", "Location", "Following"],
-        #     tablefmt="fancy_grid",
-        # )
-        # return await ixn.send(embed=Embed(title="Cached Players", description=f"```\n{plist}```"))
 
 
 class ConnectionMgmtCog(DebugCog, name="connection"):
@@ -451,12 +472,6 @@ class ConnectionMgmtCog(DebugCog, name="connection"):
             max_rows_per_page=8,
         )
         await ixn.send(content=cpaginator.pages[0], view=TablePaginatorView(author=ixn.user, paginator=cpaginator))
-        # clist = tabulate.tabulate(
-        #     [(str(c.room), str(c.connected_to), c.direction) for c in connections],
-        #     headers=["Room", "Connected To", "Direction"],
-        #     tablefmt="fancy_grid",
-        # )
-        # return await ixn.send(f"## Cached Connections\n```\n{clist}```")
 
 
 class DatabaseMgmtCog(DebugCog, name="database"):

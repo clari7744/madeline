@@ -18,7 +18,7 @@ from madlib import (
     SearchTerm,
     is_game_channel,
 )
-from madlib.config import CURRENT_DEBUG, GUILD_ID, LOCAL_DEBUG
+from madlib.config import GUILD_ID, LOCAL_DEBUG
 from madlib.ui import EditRoleplayMessageModal
 
 log = getLogger(__name__)
@@ -57,7 +57,6 @@ class CommunicationCog(commands.Cog):
             The message to send.
         """
         # TODO: use a modal or something to permit multiline. emojis are gonna suck ass unfortunately
-        await ixn.response.defer(thinking=True)
         player = await Player.from_interaction(ixn)
 
         await player.rp(ixn, message)
@@ -82,7 +81,7 @@ class CommunicationCog(commands.Cog):
         await ixn.response.defer(thinking=True)
         player = await Player.from_interaction(ixn)
         log.log(
-            CURRENT_DEBUG,
+            LOCAL_DEBUG,
             f"{player} is eavesdropping on {connection.connected_to} from {connection.room.room_name}",
         )
         all_msgs = self.bot.cache.get_cache(RoleplayMessage).get_many(
@@ -101,7 +100,7 @@ class CommunicationCog(commands.Cog):
                 f"No RP messages found in {connection.connected_to.room_name} within the last 20 minutes."
             )
         log.log(
-            CURRENT_DEBUG,
+            LOCAL_DEBUG,
             f"Found {len(eavesdroppable)} RP messages in {connection.connected_to.room_name} to eavesdrop on.",
         )
         # await ixn.send(
@@ -109,13 +108,13 @@ class CommunicationCog(commands.Cog):
         # )
         for rp_msg in eavesdroppable:
             log.log(
-                CURRENT_DEBUG,
+                LOCAL_DEBUG,
                 f"RP message from {rp_msg.sent_by.pretty_name} in {rp_msg.sent_in_room}: {rp_msg.message_content}",
             )
             txt = rp_msg.message_content
             match = self.dialog_re.findall(rp_msg.message_content)
             log.log(
-                CURRENT_DEBUG,
+                LOCAL_DEBUG,
                 f"Found {len(match)} dialogue lines in RP message {rp_msg.original_message_id}: {match}",
             )
             if match:  # no dialogue in this message!
@@ -156,8 +155,6 @@ class CommunicationCog(commands.Cog):
         # if this command starts taking more than 3 seconds to respond,
         # COMMENT OUT THIS ONE #
         # and uncomment the above deferral
-        await ixn.response.defer(thinking=True)
-
         await player.rp(ixn, message, message_type="whisper", target=target)
 
     @app_commands.command(name="shout")
@@ -173,7 +170,6 @@ class CommunicationCog(commands.Cog):
         message : str
             The message to broadcast.
         """
-        await ixn.response.defer(thinking=True)
         player = await Player.from_interaction(ixn)
         await player.rp(ixn, message, message_type="shout")
 
@@ -183,7 +179,9 @@ class CommunicationCog(commands.Cog):
     async def context_edit_roleplay_message(self, ixn: Interaction[Madeline], message: Message):
         player = await Player.from_interaction(ixn)
         rpm_cache = self.bot.cache.get_cache(RoleplayMessage)
+        log.log(LOCAL_DEBUG, f"Context menu edit roleplay message invoked by {player} on message {message.id}")
         example_msg = rpm_cache.get_first(original_message_id=message.id)
+        print(example_msg)
         if example_msg is None:
             raise app_commands.CheckFailure("This is not a roleplay message.")
         await ixn.response.send_modal(EditRoleplayMessageModal(player, message, example_msg.message_type))
@@ -193,6 +191,7 @@ class CommunicationCog(commands.Cog):
     @app_commands.check(is_game_channel)
     async def context_delete_roleplay_message(self, ixn: Interaction[Madeline], message: Message):
         player = await Player.from_interaction(ixn)
+        log.log(LOCAL_DEBUG, f"Context menu delete roleplay message invoked by {player} on message {message.id}")
         rpm_cache = ixn.client.cache.get_cache(RoleplayMessage)
         found_messages = rpm_cache.get_many(original_message_id=message.id, sent_by=player)
         if not found_messages:
@@ -204,6 +203,12 @@ class CommunicationCog(commands.Cog):
 
         await message.delete()
         for msg in found_messages:
+            if msg.received_message_id == 0:
+                log.log(
+                    LOCAL_DEBUG,
+                    f"Roleplay message {msg.original_message_id} has no received_message_id, skipping deletion (user was alone in channel at time of sending).",
+                )
+                continue
             try:
                 to_delete = await msg.sent_to.channel.fetch_message(msg.received_message_id)
                 await to_delete.delete()

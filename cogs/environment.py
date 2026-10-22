@@ -41,7 +41,10 @@ class CheckGroup(app_commands.Group, name="check", description="Check various th
         room = player.location
 
         return await ixn.send(
-            embed=Embed(title=f"Room: {room}").add_field(
+            embed=Embed(
+                title=f"Room: {room}",
+                color=room.color,
+            ).add_field(
                 name="Connected Rooms",
                 value="\n".join(f"{c.connected_to} ({c.direction})" for c in room.get_connected()) or "None (???)",
             )
@@ -61,7 +64,11 @@ class CheckGroup(app_commands.Group, name="check", description="Check various th
         room = player.location
 
         return await ixn.send(
-            embed=Embed(title=f"Room: {room}", description=room.description).add_field(
+            embed=Embed(
+                title=f"Room: {room}",
+                description=room.description,
+                color=room.color,
+            ).add_field(
                 name="Connected Rooms",
                 value="\n".join(f"{c.connected_to} ({c.direction})" for c in room.get_connected()) or "None (???)",
             )
@@ -84,9 +91,10 @@ class CheckGroup(app_commands.Group, name="check", description="Check various th
         members = room.get_members()
 
         return await ixn.send(
-            embed=Embed(title=f"People in {room}").add_field(
-                name="People", value="\n".join(f"{p.pretty_name}" for p in members)
-            )
+            embed=Embed(
+                title=f"People in {room}",
+                color=room.color,
+            ).add_field(name="People", value="\n".join(f"{p.pretty_name}" for p in members))
         )
 
     @people.command(name="detailed")
@@ -105,7 +113,10 @@ class CheckGroup(app_commands.Group, name="check", description="Check various th
         members = room.get_members(excludes=[player])
 
         return await ixn.send(
-            embed=Embed(title=f"People in {room}").add_field(
+            embed=Embed(
+                title=f"People in {room}",
+                color=room.color,
+            ).add_field(
                 name="People",
                 value="\n".join(
                     f"{p.pretty_name}\n\tAppearance: {p.appearance}\n\tAction: {p.action}\n" for p in members
@@ -166,6 +177,7 @@ class EnvironmentCog(commands.Cog):
                 embed=Embed(
                     title=f"Looking closer at {target.pretty_name}",
                     description=f"Subtle text: {target.subtle}",
+                    color=target.location.color,
                 )
             )
 
@@ -260,6 +272,7 @@ class EnvironmentCog(commands.Cog):
             embed=Embed(
                 title=f"Room: {after}",
                 description=f"{' | '.join(p.emoji if p.emoji else p.short_name for p in after.get_members())}\n{after.description}",
+                color=after.color,
             ).add_field(
                 name="Connected Rooms",
                 value="\n".join(f"{c.connected_to} ({c.direction})" for c in after.get_connected()) or "None (???)",

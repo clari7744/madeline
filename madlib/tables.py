@@ -623,10 +623,10 @@ class Player(Table, primary_key="channel_id"):
             await ixn.response.defer(thinking=True)
 
         you_say = f"**You:** {message}"
-        targets = self.location.get_members(excludes=[self])
-        they_receive = f"**{self.pretty_name}:** {message}"
-        addl_recipients = []
-        addl_recipients_see = ""
+        targets: dict[Player, str] = {
+            m: f"**{self.pretty_name}:** {message}" for m in self.location.get_members(excludes=[self])
+        }
+        addl_recipients: dict[Player, str] = {}
 
         if message_type == "whisper":
             # check for target or try to get from og for edit
@@ -639,20 +639,33 @@ class Player(Table, primary_key="channel_id"):
                 target = old_rpm.sent_to
 
             you_say = f"*You whisper to **{target.pretty_name}**:* {message}"
-            targets = [target]
-            they_receive = f"***{self.pretty_name}** whispers to you:* {message}"
-            addl_recipients = [m for m in self.location.get_members(excludes=[self, target])]
-            addl_recipients_see = f"***{self.pretty_name}** whispers something to **{target.pretty_name}***"
+            targets = {target: f"***{self.pretty_name}** whispers to you:* {message}"}
+            addl_recipients = {
+                m: f"***{self.pretty_name}** whispers something to **{target.pretty_name}***"
+                for m in self.location.get_members(excludes=[self, target])
+            }
         elif message_type == "shout":
             you_say = f"*You shout:* {message}"
-            they_receive = f"***{self.pretty_name}** shouts from {self.location}:* {message}"
-            for r in self.location.get_connected(include_hidden=True):
+            # Fix message to room members
+            for t in targets:
+                targets[t] = f"***{self.pretty_name}** shouts from {self.location}:* {message}"
+            # Set message to adjacent room members based on hidden status
+            for conn in self.location.get_connected(include_hidden=True):
                 log.log(
                     LOCAL_DEBUG,
-                    f"{self.short_name} is shouting to connected room {r.connected_to} from {self.location}",
+                    f"{self.short_name} is shouting to connected room {conn.connected_to} from {self.location}",
                 )
-                targets.extend(r.connected_to.get_members(excludes=[self]))
-            they_receive = f"***{self.pretty_name}** shouts from {self.location}:* {message}"
+                for mem in conn.connected_to.get_members(excludes=[self]):
+                    rev = conn.reversed
+                    loc = self.location.room_name
+                    if rev is None:
+                        log.warning(
+                            f"Connection from {self.location} to {conn.connected_to} has no reversed connection!"
+                        )
+                    elif rev.hidden:
+                        loc = f"somewhere to the {rev.direction}"
+
+                    targets[mem] = f"***{self.pretty_name}** shouts from {loc}:* {message}"
 
         edit = False
         if src_message is not None:
@@ -676,15 +689,15 @@ class Player(Table, primary_key="channel_id"):
             src_message = await ixn.send(you_say)
 
         rp_msgs: list[RoleplayMessage] = []
-        for member in targets:
+        for member, receives in targets.items():
             rp_msgs.append(
                 await self._edit_or_send_rp(
-                    ixn, they_receive, target=member, src_message=src_message, message_type=message_type, edit=edit
+                    ixn, receives, target=member, src_message=src_message, message_type=message_type, edit=edit
                 )
             )
 
-        for member in addl_recipients:
-            await member.send(addl_recipients_see, fallback=ixn)
+        for member, receives in addl_recipients.items():
+            await member.send(receives, fallback=ixn)
         if not targets and not addl_recipients:
             log.log(LOCAL_DEBUG, f"{self} is alone in {self.location}, saving dummy message {src_message}")
             rp_msgs.append(

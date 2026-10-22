@@ -99,10 +99,10 @@ class SettingsCog(commands.Cog):
         await player.save()
 
         await player.location.alert(
-            f'***{player.pretty_name}** has changed their appearance from "*{old_appearance}*" to "*{new_appearance}*".*',
+            f"***{player.pretty_name}** has changed their appearance from *`{old_appearance}`* to *`{new_appearance}`*.",
             excludes=[player],
         )
-        return await ixn.send(f'*Changed your appearance from "*{old_appearance}*" to "*{new_appearance}*".*')
+        return await ixn.send(f"*Changed your appearance from *`{old_appearance}`* to *`{new_appearance}`*.")
 
     @app_commands.command(name="action")
     @app_commands.guild_only()
@@ -126,10 +126,10 @@ class SettingsCog(commands.Cog):
         await player.save()
 
         await player.location.alert(
-            f'***{player.pretty_name}** has changed their action text from "{old_action}" to "{new_action}".*',
+            f"***{player.pretty_name}** has changed their action text from *`{old_action}`* to *`{new_action}`*.",
             excludes=[player],
         )
-        return await ixn.send(f'*Changed your action text from "{old_action}" to "{new_action}".*')
+        return await ixn.send(f"*Changed your action text from *`{old_action}`* to *`{new_action}`*.")
 
     @app_commands.command(name="subtle")
     @app_commands.guild_only()
@@ -152,7 +152,7 @@ class SettingsCog(commands.Cog):
         player.subtle = new_subtle
         await player.save()
 
-        return await ixn.send(f"*Changed your subtle text from '{old_subtle}' to '{new_subtle}'.*")
+        return await ixn.send(f"*Changed your subtle text from *`{old_subtle}`* to *`{new_subtle}`*.")
 
 
 async def setup(bot: Madeline):

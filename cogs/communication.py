@@ -18,6 +18,7 @@ from madlib import (
     RoommateTransformer,
     SearchTerm,
     is_game_channel,
+    strip_content_header,
 )
 from madlib.config import COMMAND_GUILDS, LOCAL_DEBUG
 from madlib.ui import EditRoleplayMessageModal
@@ -94,13 +95,13 @@ class CommunicationCog(commands.Cog):
                 LOCAL_DEBUG,
                 f"RP message from {rp_msg.sent_by.pretty_name} in {rp_msg.sent_in_room}: {rp_msg.message_content}",
             )
-            txt = rp_msg.message_content
+            txt = strip_content_header(rp_msg.message_content)
             match = self.dialog_re.findall(rp_msg.message_content)
             log.log(
                 LOCAL_DEBUG,
                 f"Found {len(match)} dialogue lines in RP message {rp_msg.original_message_id}: {match}",
             )
-            if match:  # no dialogue in this message!
+            if match:
                 txt = "\n".join(f'"{d}"' for d in match)
 
             await ixn.send(
@@ -153,6 +154,7 @@ class CommunicationCog(commands.Cog):
     @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def shout(self, ixn: Interaction[Madeline], message: str):
+        # TODO: shout to specific room
         """
         Broadcast the given dialogue to the occupied and adjacent rooms.
 

@@ -96,7 +96,8 @@ class CheckGroup(app_commands.Group, name="check", description="Check various th
             embed=Embed(
                 title=f"People in {room}",
                 color=room.color,
-            ).add_field(name="People", value="\n".join(f"{p.pretty_name}" for p in members))
+                description="\n".join(f"{p.pretty_name}" for p in members) or "You're the only one here.",
+            )
         )
 
     @people.command(name="detailed")
@@ -118,13 +119,12 @@ class CheckGroup(app_commands.Group, name="check", description="Check various th
             embed=Embed(
                 title=f"People in {room}",
                 color=room.color,
-            ).add_field(
-                name="People",
-                value="\n".join(
-                    f"{p.pretty_name}\n\tAppearance: {p.appearance}\n\tAction: {p.action}\n" for p in members
+                description="\n".join(
+                    f"{p.pretty_name} ({p.full_name})\n\tAppearance: {p.appearance}\n\tAction: {p.action}\n"
+                    for p in members
                 )
                 or "You're the only one here.",
-            )
+            ),
         )
 
 
@@ -163,21 +163,18 @@ class EnvironmentCog(commands.Cog):
         await ixn.response.defer(thinking=True)
 
         await target.send(f"***{player.pretty_name}** looks at you (level: {level}).*", fallback=ixn)
-        if level == "general":
-            return await ixn.send(
-                embed=Embed(
-                    title=f"Looking at {target.pretty_name}",
-                    description=f"Appearance: {target.appearance}\nAction: {target.action}",
-                )
+        title = f"Looking at {target.pretty_name}"
+        description = f"Full Name: {target.full_name}\n" f"Appearance: {target.appearance}\n" f"Action: {target.action}"
+        if level == "subtle":
+            title = f"Taking a closer look at {target.pretty_name}"
+            description += f"\nSubtle tag: {target.subtle}"
+        return await ixn.send(
+            embed=Embed(
+                title=title,
+                description=description,
+                color=target.location.color,
             )
-        elif level == "subtle":
-            return await ixn.send(
-                embed=Embed(
-                    title=f"Looking closer at {target.pretty_name}",
-                    description=f"Subtle text: {target.subtle}",
-                    color=target.location.color,
-                )
-            )
+        )
 
     @app_commands.command(name="go-to")
     @app_commands.guild_only()

@@ -153,7 +153,7 @@ class AdminCog(commands.GroupCog, name="admin"):
         for recipient in recipients:
             await recipient.send(f"**Loudspeaker:** {message}", fallback=ixn)
         return await ixn.edit_original_response(
-            f"Sent loudspeaker message to all {len(recipients)} players.\n## Message\n{message}"
+            content=f"Sent loudspeaker message to all {len(recipients)} players.\n## Message\n{message}"
         )
 
     @loudspeaker.command(name="zone")
@@ -175,7 +175,7 @@ class AdminCog(commands.GroupCog, name="admin"):
         for recpient in recipients:
             await recpient.send(f"**Loudspeaker:** {message}", fallback=ixn)
         return await ixn.edit_original_response(
-            f"Sent loudspeaker message to all players in zone {zone}.\n## Message\n{message}"
+            content=f"Sent loudspeaker message to all players in zone {zone}.\n## Message\n{message}"
         )
 
     @loudspeaker.command(name="room")
@@ -197,7 +197,7 @@ class AdminCog(commands.GroupCog, name="admin"):
         for recipient in recipients:
             await recipient.send(f"**Loudspeaker:** {message}", fallback=ixn)
         return await ixn.edit_original_response(
-            f"Sent loudspeaker message to {len(recipients)} players in room {room}.\n## Message\n{message}"
+            content=f"Sent loudspeaker message to {len(recipients)} players in room {room}.\n## Message\n{message}"
         )
 
     @loudspeaker.command(name="player")

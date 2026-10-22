@@ -73,3 +73,9 @@ def strip_content_header(content: str) -> str:
         body = body[1:]
         log.log(LOCAL_DEBUG, f"Stripped leading asterisk from body: {body}")
     return body.strip()
+
+
+class Actions:
+    WHISPER = "whisper to"
+    LOOK_AT = "look at"
+    FOLLOW = "follow"

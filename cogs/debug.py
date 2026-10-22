@@ -16,14 +16,14 @@ from madlib import (
     RoomTransformer,
     SearchTerm,
 )
-from madlib.config import GUILD_ID, LOCAL_DEBUG
+from madlib.config import COMMAND_GUILDS, LOCAL_DEBUG
 from madlib.ui import TablePaginator, TablePaginatorView
 
 log = getLogger(__name__)
 
 
 @app_commands.guild_only()
-@app_commands.guilds(GUILD_ID)
+@app_commands.guilds(*COMMAND_GUILDS)
 @app_commands.default_permissions(administrator=True)
 @app_commands.check(lambda ixn: ixn.client.is_owner(ixn.user))
 class DebugCog(commands.GroupCog):

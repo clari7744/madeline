@@ -8,11 +8,11 @@ load_dotenv(verbose=True)
 TESTING = os.getenv("TESTING", "False").lower() in ("true", "1", "t", "y", "yes")
 TOKEN = os.getenv("TOKEN")
 
+COMMAND_GUILDS = [1555644504181317805, 1375726989805092874]
 if TESTING:
-    GUILD_ID = 1555644504181317805
+
     DATABASE_NAME = "manor_test.db"
 else:
-    GUILD_ID = 1375726989805092874
     DATABASE_NAME = "manor.db"
 
 OWNERS = {351516798635606020, 642416218967375882}

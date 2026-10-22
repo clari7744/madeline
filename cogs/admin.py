@@ -3,12 +3,12 @@ from discord.ext import commands
 from DPyUtils import _and, an
 
 from madlib import Madeline, Player, PlayerTransformer, Room, RoomTransformer, SearchTerm
-from madlib.config import GUILD_ID
+from madlib.config import COMMAND_GUILDS
 from madlib.ui import DiceRollView
 
 
 @app_commands.guild_only()
-@app_commands.guilds(GUILD_ID)
+@app_commands.guilds(*COMMAND_GUILDS)
 @app_commands.default_permissions(administrator=True)
 @app_commands.check(lambda ixn: ixn.client.is_owner(ixn.user))
 class AdminCog(commands.GroupCog, name="admin"):

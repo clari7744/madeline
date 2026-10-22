@@ -7,6 +7,7 @@ from discord.ext import commands
 
 from madlib import Madeline, Player, SearchTerm
 from madlib.config import TYPING_CATEGORIES, TYPING_EXCLUDE_CHANNELS
+from madlib.transformers import FailedTransform
 
 log = getLogger(__name__)
 
@@ -100,7 +101,7 @@ class Events(commands.Cog):
         error: app_commands.AppCommandError,
     ) -> None:
         """AppCommand error handler."""
-        log.info(f"AppCommand error handler called for {ixn.command} with error: {error}")
+        log.info(f"AppCommand error handler called for {ixn.command.qualified_name} with error: {error}")
         command = ixn.command
 
         # Default logging if the AppCommand is None...
@@ -128,6 +129,8 @@ class Events(commands.Cog):
                 log.error("Ignoring exception in command %r", ixn.command, exc_info=error)
         elif isinstance(error, app_commands.CheckFailure):
             await self.send(f"Check failure: {error}", context=ixn)
+        elif isinstance(error, FailedTransform):
+            await self.send(f"{error}", context=ixn)
         else:
             # Respond to all unhandled errors as an example... Could be removed to show the default response from Discord.
             # All unhandled errors are also logged to console...

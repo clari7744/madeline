@@ -5,20 +5,21 @@ from discord import Embed, Interaction, app_commands
 from discord.ext import commands
 
 from madlib import (
+    Actions,
     AdjacentRoomTransformer,
     Connection,
     Madeline,
     Player,
-    PlayerTransformer,
+    RoommateTransformer,
     is_game_channel,
 )
-from madlib.config import GUILD_ID, LOCAL_DEBUG
+from madlib.config import COMMAND_GUILDS, LOCAL_DEBUG
 
 log = getLogger(__name__)
 
 
 @app_commands.guild_only()
-@app_commands.guilds(GUILD_ID)
+@app_commands.guilds(*COMMAND_GUILDS)
 @app_commands.check(is_game_channel)
 class CheckGroup(app_commands.Group, name="check", description="Check various things."):
     """
@@ -138,12 +139,12 @@ class EnvironmentCog(commands.Cog):
 
     @app_commands.command(name="look-at")
     @app_commands.guild_only()
-    @app_commands.guilds(GUILD_ID)
+    @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def look_at(
         self,
         ixn: Interaction[Madeline],
-        target: app_commands.Transform[Player, PlayerTransformer],
+        target: app_commands.Transform[Player, RoommateTransformer(Actions.LOOK_AT)],
         level: Literal["general", "subtle"],
     ):
         """
@@ -157,10 +158,6 @@ class EnvironmentCog(commands.Cog):
             The attributes to show.
         """
         player = await Player.from_interaction(ixn)
-
-        roommate, msg = player.is_roommate(target, action="look at")
-        if not roommate:
-            return await ixn.send(msg, ephemeral=True)
 
         await ixn.response.defer(thinking=True)
 
@@ -183,7 +180,7 @@ class EnvironmentCog(commands.Cog):
 
     @app_commands.command(name="go-to")
     @app_commands.guild_only()
-    @app_commands.guilds(GUILD_ID)
+    @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     @app_commands.rename(connection="room")
     async def go_to(

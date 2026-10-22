@@ -9,16 +9,17 @@ from discord.ext import commands
 from discord.utils import format_dt, utcnow
 
 from madlib import (
+    Actions,
     AdjacentRoomTransformer,
     Connection,
     Madeline,
     Player,
-    PlayerTransformer,
     RoleplayMessage,
+    RoommateTransformer,
     SearchTerm,
     is_game_channel,
 )
-from madlib.config import GUILD_ID, LOCAL_DEBUG
+from madlib.config import COMMAND_GUILDS, LOCAL_DEBUG
 from madlib.ui import EditRoleplayMessageModal
 
 log = getLogger(__name__)
@@ -43,27 +44,9 @@ class CommunicationCog(commands.Cog):
         self.bot.tree.add_command(self.ctx_edit_roleplay_message)
         self.bot.tree.add_command(self.ctx_delete_roleplay_message)
 
-    @app_commands.command(name="rp")
-    @app_commands.guild_only()
-    @app_commands.guilds(GUILD_ID)
-    @app_commands.check(is_game_channel)
-    async def rp(self, ixn: Interaction[Madeline], message: str):
-        """
-        Send a roleplay message to the current room.
-
-        Parameters
-        ----------
-        message : str
-            The message to send.
-        """
-        # TODO: use a modal or something to permit multiline. emojis are gonna suck ass unfortunately
-        player = await Player.from_interaction(ixn)
-
-        await player.rp(ixn, message)
-
     @app_commands.command(name="eavesdrop")
     @app_commands.guild_only()
-    @app_commands.guilds(GUILD_ID)
+    @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     @app_commands.rename(connection="room")
     async def eavesdrop(
@@ -101,7 +84,7 @@ class CommunicationCog(commands.Cog):
             )
         log.log(
             LOCAL_DEBUG,
-            f"Found {len(eavesdroppable)} RP messages in {connection.connected_to.room_name} to eavesdrop on.",
+            f"Found {len(eavesdroppable)} theoretically-eavesdroppable RP messages in {connection.connected_to.room_name} to eavesdrop on.",
         )
         # await ixn.send(
         #     f"Found {len(eavesdroppable)} RP message{'' if len(eavesdroppable) == 1 else 's'} in {connection.connected_to.room_name} from the last 20 minutes:"
@@ -125,12 +108,32 @@ class CommunicationCog(commands.Cog):
             )
         await ixn.send(f"End of RP messages from {connection.connected_to.room_name}.", ephemeral=True)
 
+    @app_commands.command(name="rp")
+    @app_commands.guild_only()
+    @app_commands.guilds(*COMMAND_GUILDS)
+    @app_commands.check(is_game_channel)
+    async def rp(self, ixn: Interaction[Madeline], message: str):
+        """
+        Send a roleplay message to the current room.
+
+        Parameters
+        ----------
+        message : str
+            The message to send.
+        """
+        # TODO: use a modal or something to permit multiline. emojis are gonna suck ass unfortunately
+        player = await Player.from_interaction(ixn)
+        await player.rp(ixn, message)
+
     @app_commands.command(name="whisper")
     @app_commands.guild_only()
-    @app_commands.guilds(GUILD_ID)
+    @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def whisper(
-        self, ixn: Interaction[Madeline], target: app_commands.Transform[Player, PlayerTransformer], message: str
+        self,
+        ixn: Interaction[Madeline],
+        target: app_commands.Transform[Player, RoommateTransformer(Actions.WHISPER)],
+        message: str,
     ):
         """
         Send a private message to a specific player in the same room (alerts others that you're whispering).
@@ -142,24 +145,12 @@ class CommunicationCog(commands.Cog):
         message : str
             The message to whisper.
         """
-        # if this command takes more than 3 seconds, uncomment the deferral
-        # it's commented rn because it will make the ephemeral error messages no longer ephemeral
-        # await ixn.response.defer(thinking=True)
-
         player = await Player.from_interaction(ixn)
-
-        roommate, msg = player.is_roommate(target, action="whisper to")
-        if not roommate:
-            return await ixn.send(msg, ephemeral=True)
-
-        # if this command starts taking more than 3 seconds to respond,
-        # COMMENT OUT THIS ONE #
-        # and uncomment the above deferral
         await player.rp(ixn, message, message_type="whisper", target=target)
 
     @app_commands.command(name="shout")
     @app_commands.guild_only()
-    @app_commands.guilds(GUILD_ID)
+    @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def shout(self, ixn: Interaction[Madeline], message: str):
         """
@@ -174,7 +165,7 @@ class CommunicationCog(commands.Cog):
         await player.rp(ixn, message, message_type="shout")
 
     @app_commands.guild_only()
-    @app_commands.guilds(GUILD_ID)
+    @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def context_edit_roleplay_message(self, ixn: Interaction[Madeline], message: Message):
         player = await Player.from_interaction(ixn)
@@ -187,7 +178,7 @@ class CommunicationCog(commands.Cog):
         await ixn.response.send_modal(EditRoleplayMessageModal(player, message, example_msg.message_type))
 
     @app_commands.guild_only()
-    @app_commands.guilds(GUILD_ID)
+    @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def context_delete_roleplay_message(self, ixn: Interaction[Madeline], message: Message):
         player = await Player.from_interaction(ixn)

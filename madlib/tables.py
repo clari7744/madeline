@@ -432,7 +432,7 @@ class Player(Table, primary_key="channel_id"):
             return await channel.send(message, **kwargs)
         if fallback is None:
             raise ValueError("No fallback provided for sending message.")
-        msg = await fallback.send(
+        return await fallback.send(
             f"Failed to send message to {self} because their channel was not found.\n## Original Message\n{message}",
             **kwargs,
         )

@@ -1,9 +1,8 @@
 from discord import Interaction, app_commands
 from discord.ext import commands
 
-from madlib import Madeline, Player, is_game_channel
-from madlib.config import GUILD_ID
-from madlib.transformers import PlayerTransformer
+from madlib import Actions, Madeline, Player, RoommateTransformer, is_game_channel
+from madlib.config import COMMAND_GUILDS
 
 
 class SettingsCog(commands.Cog):
@@ -14,10 +13,12 @@ class SettingsCog(commands.Cog):
 
     @app_commands.command(name="follow")
     @app_commands.guild_only()
-    @app_commands.guilds(GUILD_ID)
+    @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def follow(
-        self, ixn: Interaction[Madeline], target: app_commands.Transform[Player, PlayerTransformer] = None
+        self,
+        ixn: Interaction[Madeline],
+        target: app_commands.Transform[Player, RoommateTransformer(Actions.FOLLOW)] = None,
     ):
         """
         Follow a player around.
@@ -38,9 +39,6 @@ class SettingsCog(commands.Cog):
             else:
                 return await ixn.send("*You are not currently following anyone.*", ephemeral=True)
 
-        roommate, msg = player.is_roommate(target, action="follow")
-        if not roommate:
-            return await ixn.send(msg, ephemeral=True)
         if target.following == player:
             return await ixn.send(f"*You can't follow **{target}** because they are following you.*", ephemeral=True)
 
@@ -58,7 +56,7 @@ class SettingsCog(commands.Cog):
 
     @app_commands.command(name="notifications")
     @app_commands.guild_only()
-    @app_commands.guilds(GUILD_ID)
+    @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def notifications(self, ixn: Interaction[Madeline], enable: bool = None):
         """
@@ -81,7 +79,7 @@ class SettingsCog(commands.Cog):
 
     @app_commands.command(name="appearance")
     @app_commands.guild_only()
-    @app_commands.guilds(GUILD_ID)
+    @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def appearance(self, ixn: Interaction[Madeline], new_appearance: str = None):
         """
@@ -108,7 +106,7 @@ class SettingsCog(commands.Cog):
 
     @app_commands.command(name="action")
     @app_commands.guild_only()
-    @app_commands.guilds(GUILD_ID)
+    @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def action(self, ixn: Interaction[Madeline], new_action: str = None):
         """
@@ -135,7 +133,7 @@ class SettingsCog(commands.Cog):
 
     @app_commands.command(name="subtle")
     @app_commands.guild_only()
-    @app_commands.guilds(GUILD_ID)
+    @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def subtle(self, ixn: Interaction[Madeline], new_subtle: str = None):
         """

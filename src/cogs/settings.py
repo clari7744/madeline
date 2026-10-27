@@ -13,7 +13,7 @@ class SettingsCog(commands.Cog):
 
     @app_commands.command(name="follow")
     @app_commands.guild_only()
-    @app_commands.guilds(*COMMAND_GUILDS)
+    # @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def follow(
         self,
@@ -56,7 +56,7 @@ class SettingsCog(commands.Cog):
 
     @app_commands.command(name="notifications")
     @app_commands.guild_only()
-    @app_commands.guilds(*COMMAND_GUILDS)
+    # @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def notifications(self, ixn: Interaction[Madeline], enable: bool = None):
         """
@@ -70,16 +70,16 @@ class SettingsCog(commands.Cog):
         player = await Player.from_interaction(ixn)
         if enable is None:
             return await ixn.send(
-                f"Notifications are currently {'en' if player.notifications_enabled else 'dis'}abled."
+                f"Notifications are currently **{'en' if player.notifications_enabled else 'dis'}abled**."
             )
 
         player.notifications_enabled = enable
         await player.save()
-        return await ixn.send(f"Notifications have been {'en' if enable else 'dis'}abled.")
+        return await ixn.send(f"*Notifications have been **{'en' if enable else 'dis'}abled**.*")
 
     @app_commands.command(name="appearance")
     @app_commands.guild_only()
-    @app_commands.guilds(*COMMAND_GUILDS)
+    # @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def appearance(self, ixn: Interaction[Madeline], new_appearance: str = None):
         """
@@ -92,6 +92,7 @@ class SettingsCog(commands.Cog):
         """
         player = await Player.from_interaction(ixn)
         if not new_appearance:
+            # TODO: format this better
             return await ixn.send(f"Current appearance for **{player}**: '{player.appearance}'")
 
         old_appearance = player.appearance
@@ -99,14 +100,14 @@ class SettingsCog(commands.Cog):
         await player.save()
 
         await player.location.alert(
-            f"***{player.pretty_name}** has changed their appearance from *`{old_appearance}`* to *`{new_appearance}`*.",
+            f"***{player.pretty_name}** has changed their appearance from* `{old_appearance}` *to* `{new_appearance}`.",
             excludes=[player],
         )
-        return await ixn.send(f"*Changed your appearance from *`{old_appearance}`* to *`{new_appearance}`*.")
+        return await ixn.send(f"*Changed your appearance from* `{old_appearance}` *to* `{new_appearance}`.")
 
     @app_commands.command(name="action")
     @app_commands.guild_only()
-    @app_commands.guilds(*COMMAND_GUILDS)
+    # @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def action(self, ixn: Interaction[Madeline], new_action: str = None):
         """
@@ -119,6 +120,7 @@ class SettingsCog(commands.Cog):
         """
         player = await Player.from_interaction(ixn)
         if not new_action:
+            # TODO: format this better
             return await ixn.send(f"Current action text for **{player.pretty_name}**: '{player.action}'")
 
         old_action = player.action
@@ -126,14 +128,14 @@ class SettingsCog(commands.Cog):
         await player.save()
 
         await player.location.alert(
-            f"***{player.pretty_name}** has changed their action text from *`{old_action}`* to *`{new_action}`*.",
+            f"***{player.pretty_name}** has changed their action text from* `{old_action}` *to* `{new_action}`.",
             excludes=[player],
         )
-        return await ixn.send(f"*Changed your action text from *`{old_action}`* to *`{new_action}`*.")
+        return await ixn.send(f"*Changed your action text from* `{old_action}` *to* `{new_action}`.")
 
     @app_commands.command(name="subtle")
     @app_commands.guild_only()
-    @app_commands.guilds(*COMMAND_GUILDS)
+    # @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def subtle(self, ixn: Interaction[Madeline], new_subtle: str = None):
         """
@@ -146,13 +148,14 @@ class SettingsCog(commands.Cog):
         """
         player = await Player.from_interaction(ixn)
         if not new_subtle:
+            # TODO: format this better
             return await ixn.send(f"Current subtle text for **{player.pretty_name}**: '{player.subtle}'")
 
         old_subtle = player.subtle
         player.subtle = new_subtle
         await player.save()
 
-        return await ixn.send(f"*Changed your subtle text from *`{old_subtle}`* to *`{new_subtle}`*.")
+        return await ixn.send(f"*Changed your subtle text from* `{old_subtle}` *to* `{new_subtle}`.")
 
 
 async def setup(bot: Madeline):

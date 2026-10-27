@@ -4,10 +4,11 @@ from logging import getLogger
 from typing import TYPE_CHECKING, Literal
 
 from discord import Interaction, app_commands
+from DPyUtils import strfdur
 
-from madlib.config import LOCAL_DEBUG
+from madlib.config import EAVESDROP_COOLDOWN, LOCAL_DEBUG
 
-from .tables import Player
+from .tables import Player, Room
 
 if TYPE_CHECKING:
     from .madeline import Madeline
@@ -79,3 +80,14 @@ class Actions:
     WHISPER = "whisper to"
     LOOK_AT = "look at"
     FOLLOW = "follow"
+
+
+class FailedTransform(app_commands.AppCommandError):
+    def __init__(self, message: str):
+        super().__init__(message)
+
+
+class EavesdropCooldown(app_commands.CommandOnCooldown):
+    def __init__(self, retry_after: float, room: Room, cooldown: app_commands.Cooldown):
+        self.message = f"You can only eavesdrop on a room once every {strfdur(EAVESDROP_COOLDOWN)}. You can eavesdrop on **{room}** again in `{strfdur(retry_after)}`."
+        super().__init__(cooldown, retry_after)

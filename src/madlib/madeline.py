@@ -8,7 +8,7 @@ from discord.ext import commands
 from .cache import CacheMap
 from .config import DATABASE_NAME, LOCAL_DEBUG, OWNERS, TESTING
 from .mentionable_tree import MentionableTree
-from .tables import Connection, Player, RoleplayMessage, Room
+from .tables import Connection, Player, RoleplayMessage, Room, Zone
 
 log = getLogger(__name__)
 
@@ -39,7 +39,8 @@ class Madeline(commands.Bot):
     async def setup_hook(self) -> None:
         # Create caches
         self.cache = (
-            CacheMap(self, Room)
+            CacheMap(self, Zone)
+            .add_cache(Room, foreign_refs={"zone": Zone})
             .add_cache(Player, foreign_refs={"location": Room, "following": Player})
             .add_cache(Connection, foreign_refs={"room": Room, "connected_to": Room})
             .add_cache(RoleplayMessage, foreign_refs={"sent_by": Player, "sent_to": Player})

@@ -29,5 +29,5 @@ async def main():
         await bot.start(TOKEN)
 
 
-utils.setup_logging(level=CURRENT_DEBUG)
+utils.setup_logging(formatter=utils._ColourFormatter(), level=CURRENT_DEBUG)
 asyncio.run(main())

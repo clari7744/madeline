@@ -2,7 +2,7 @@ from logging import getLogger
 
 import DPyUtils
 import tabulate
-from discord import Color, Interaction, PartialEmoji, TextChannel, app_commands
+from discord import Color, Embed, Interaction, PartialEmoji, TextChannel, app_commands
 from discord.ext import commands
 from discord.utils import MISSING
 
@@ -16,7 +16,8 @@ from madlib import (
     PlayerTransformer,
     Room,
     RoomTransformer,
-    SearchTerm,
+    Zone,
+    ZoneTransformer,
 )
 from madlib.config import COMMAND_GUILDS, LOCAL_DEBUG
 from madlib.ui import TablePaginator, TablePaginatorView
@@ -25,7 +26,7 @@ log = getLogger(__name__)
 
 
 @app_commands.guild_only()
-@app_commands.guilds(*COMMAND_GUILDS)
+# @app_commands.guilds(*COMMAND_GUILDS)
 @app_commands.default_permissions(administrator=True)
 @app_commands.check(lambda ixn: ixn.client.is_owner(ixn.user))
 class DebugCog(commands.GroupCog):
@@ -37,6 +38,27 @@ class DebugCog(commands.GroupCog):
     def interaction_check(self, ixn: Interaction[Madeline]) -> bool:
         """Check if the user is an owner."""
         return ixn.user.id in ixn.client.owner_ids
+
+
+async def set_clr(obj: Zone | Room, color: str):
+    """Set the color of a zone or room."""
+    if color.isdigit():
+        color = hex(int(color))
+    clr = Color.from_str(color)
+    obj.color = clr.value
+    await obj.save()
+    return clr
+
+
+def clr_embed(obj: Zone | Room) -> Embed:
+    return Embed(
+        title=f"{obj}'s Color",
+        description=f"Current color of {obj} is:\n"
+        f"**Hex:** `#{obj.color:06x}`\n"
+        f"**Int:** `{obj.color}`\n"
+        f"**RGB:** `{Color(obj.color).to_rgb()}`",
+        color=obj.color,
+    )
 
 
 class ZoneMgmtCog(DebugCog, name="zone"):
@@ -68,26 +90,23 @@ class ZoneMgmtCog(DebugCog, name="zone"):
         return await ixn.send(f"Added `{zone_name}` to the database.")
 
     @app_commands.command(name="color")
-    async def zone_color(self, ixn: Interaction[Madeline], zone: str, color: str):
+    async def zone_color(
+        self, ixn: Interaction[Madeline], zone: app_commands.Transform[Zone, ZoneTransformer], color: str = None
+    ):
         """
-        Set the color of a zone.
+        Set or get the color of a zone.
 
         Parameters
         ----------
-        zone : str
-            The name of the zone.
-        color : str
-            The color to set (hex or int).
+        zone : Zone
+            The zone to set or get the color for.
+        color : str, optional
+            The color to set (hex or int). If not provided, shows the current color of the zone.
         """
-        rcache = self.bot.cache.get_cache(Room)
-        if color.isdigit():
-            color = hex(int(color))
-        clr = Color.from_str(color).value
-        rooms = rcache.get_many(zone=SearchTerm(zone, fuzzy=True))
-        for r in rooms:
-            r.color = clr
-        await rcache.write_many(rooms)
-        return await ixn.send(f"Set all rooms in `{rooms[0].zone}` to `{color}`.")
+        if color is None:
+            return await ixn.send(embed=clr_embed(zone))
+        res = await set_clr(zone, color)
+        return await ixn.send(f"Set color of zone `{zone}` to `{res}`.")
 
     @app_commands.command(name="list")
     async def zone_list(self, ixn: Interaction[Madeline]):
@@ -109,21 +128,16 @@ class ZoneMgmtCog(DebugCog, name="zone"):
         return await ixn.send(f"## Saved Zones\n```\n{zlist}```")
 
     @app_commands.command(name="remove")
-    async def zone_remove(self, ixn: Interaction[Madeline], zone: str):
+    async def zone_remove(self, ixn: Interaction[Madeline], zone: app_commands.Transform[Zone, ZoneTransformer]):
         """
         Remove a zone from the database.
 
         Parameters
         ----------
-        zone : str
-            The name of the zone to remove.
+        zone : Zone
+            The zone to remove.
         """
-        async with ixn.client.db.cursor() as c:
-            await c.execute("DELETE FROM zones WHERE zone_name=? RETURNING zone_name", (zone,))
-            res = await c.fetchone()
-            if res is None:
-                return await ixn.send(f"Zone `{zone}` not found in the database.", ephemeral=True)
-        await ixn.client.db.commit()
+        await zone.delete()
         return await ixn.send(f"Removed `{zone}` from the database.")
 
 
@@ -135,7 +149,7 @@ class RoomMgmtCog(DebugCog, name="room"):
         self,
         ixn: Interaction[Madeline],
         room_name: str,
-        zone: str,
+        zone: app_commands.Transform[Zone, ZoneTransformer],
         description: str,
         color: str = "#000000",
         locked: bool = False,
@@ -147,7 +161,7 @@ class RoomMgmtCog(DebugCog, name="room"):
         ----------
         room_name : str
             The name of the room.
-        zone : str
+        zone : Zone
             The zone of the room.
         description : str
             The description of the room.
@@ -173,7 +187,7 @@ class RoomMgmtCog(DebugCog, name="room"):
         self,
         ixn: Interaction[Madeline],
         room: app_commands.Transform[Room, RoomTransformer],
-        zone: str | None = None,
+        zone: app_commands.Transform[Zone, ZoneTransformer] | None = None,
         description: str | None = None,
         color: str | None = None,
         locked: bool | None = None,
@@ -185,7 +199,7 @@ class RoomMgmtCog(DebugCog, name="room"):
         ----------
         room : Room
             The room to update.
-        zone : str, optional
+        zone : Zone, optional
             The new zone of the room.
         description : str, optional
             The new description of the room.
@@ -210,6 +224,25 @@ class RoomMgmtCog(DebugCog, name="room"):
         await room.save()
         return await ixn.send(f"Updated `{room.room_name}` in the database.")
 
+    @app_commands.command(name="color")
+    async def room_color(
+        self, ixn: Interaction[Madeline], room: app_commands.Transform[Room, RoomTransformer], color: str = None
+    ):
+        """
+        Set or get the color of a room.
+
+        Parameters
+        ----------
+        room : Room
+            The room to set or get the color for.
+        color : str, optional
+            The color to set (hex or int). If not provided, shows the current color of the room.
+        """
+        if color is None:
+            return await ixn.send(embeds=[clr_embed(room), clr_embed(room.zone)])
+        res = await set_clr(room, color)
+        return await ixn.send(f"Set color of room `{room}` to `{res}`.")
+
     @app_commands.command(name="list")
     async def room_list(self, ixn: Interaction[Madeline]):
         """
@@ -222,7 +255,7 @@ class RoomMgmtCog(DebugCog, name="room"):
 
         rpaginator = TablePaginator(
             headers=["Room Name", "Zone", "Description"],
-            rows=[[r.room_name, r.zone, r.description] for r in rooms],
+            rows=[[r.room_name, r.zone.zone_name, r.description] for r in rooms],
             max_rows_per_page=8,
         )
 
@@ -285,10 +318,10 @@ class PlayerMgmtCog(DebugCog, name="player"):
             The player that this player is following. Defaults to None.
         """
         p = Player(
-            channel_id=channel,
+            channel_id=channel.id,
             short_name=short_name,
             full_name=full_name or short_name,
-            emoji_id=getattr(PartialEmoji.from_str(emoji), "id", emoji) or 0,
+            emoji_id=getattr(PartialEmoji.from_str(emoji or "0"), "id", emoji),
             notifications_enabled=notifications_enabled,
             location=location,
             appearance=appearance,

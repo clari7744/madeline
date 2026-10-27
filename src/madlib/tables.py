@@ -29,8 +29,6 @@ class Table:
     """The primary key(s) of the table."""
     composite_key: bool = False
     """Whether the primary key is composite (i.e., consists of multiple fields)."""
-    foreign_keys: dict[str, type[Table]] = field(default_factory=dict)
-    """A mapping of field names to the corresponding Table classes for foreign keys."""
 
     bot: Madeline
 
@@ -149,6 +147,38 @@ class Table:
 
 
 @dataclass
+class Zone(Table, primary_key="zone_name"):
+    """
+    Represents a zone in the game.
+    """
+
+    zone_name: str
+    """The name of the zone."""
+    description: str
+    """A description of the zone."""
+    color: int
+    """The default color for all rooms in this zone."""
+
+    def __str__(self):
+        return self.zone_name
+
+    def get_rooms(self, excludes: Optional[list[Room]] = None) -> list[Room]:
+        """
+        Get a list of rooms in this zone.
+
+        Parameters
+        ----------
+        excludes : Optional[list[Room]], optional
+            A list of rooms to exclude from the results (default is None).
+        """
+        room_cache = self.bot.cache.get_cache(Room)
+        rooms = room_cache.get_many(zone=self)
+        if excludes:
+            rooms = [room for room in rooms if room not in excludes]
+        return rooms
+
+
+@dataclass
 class Room(Table, primary_key="room_name"):
     """
     Represents a room in the game.
@@ -157,7 +187,7 @@ class Room(Table, primary_key="room_name"):
     ----------
     room_name : str
         The name of the room.
-    zone : str
+    zone : Zone
         The zone the room is in.
     description : str
         A description of the room.
@@ -170,7 +200,7 @@ class Room(Table, primary_key="room_name"):
     room_name: str
     """The name of the room."""
     _: KW_ONLY
-    zone: str
+    zone: Zone
     """The zone the room is in."""
     description: str
     """A description of the room."""
@@ -181,6 +211,19 @@ class Room(Table, primary_key="room_name"):
 
     def __str__(self) -> str:
         return self.room_name
+
+    @property
+    def resolved_color(self) -> int:
+        """
+        Get the resolved color for the room, falling back to the zone's color if the room's color is not set.
+
+        Returns
+        -------
+        int
+            The resolved color for the room.
+        """
+        # Return local room color, then zone color if local room color is 0
+        return self.color or self.zone.color
 
     async def send(self, message: str, **kwargs):
         """
@@ -622,7 +665,7 @@ class Player(Table, primary_key="channel_id"):
             # MUST BE DEFERRED otherwise ixn.send returns an interactioncallbackresponse and i did not handle those properly
             await ixn.response.defer(thinking=True)
 
-        you_say = f"**You:** {message}"
+        you_say = f"**{self.pretty_name} (You):** {message}"
         targets: dict[Player, str] = {
             m: f"**{self.pretty_name}:** {message}" for m in self.location.get_members(excludes=[self])
         }
@@ -648,7 +691,7 @@ class Player(Table, primary_key="channel_id"):
             you_say = f"*You shout:* {message}"
             # Fix message to room members
             for t in targets:
-                targets[t] = f"***{self.pretty_name}** shouts from {self.location}:* {message}"
+                targets[t] = f"***{self.pretty_name}** shouts from **{self.location}**:* {message}"
             # Set message to adjacent room members based on hidden status
             for conn in self.location.get_connected(include_hidden=True):
                 log.log(
@@ -665,7 +708,7 @@ class Player(Table, primary_key="channel_id"):
                     elif rev.hidden:
                         loc = f"somewhere to the {rev.direction}"
 
-                    targets[mem] = f"***{self.pretty_name}** shouts from {loc}:* {message}"
+                    targets[mem] = f"***{self.pretty_name}** shouts from **{loc}**:* {message}"
 
         edit = False
         if src_message is not None:
@@ -719,7 +762,7 @@ class Player(Table, primary_key="channel_id"):
 
         log.log(
             INFO,
-            f"Sent {len(rp_msgs)} roleplay messages for {message_type} from {self} to {[m.sent_to.short_name for m in rp_msgs]}",
+            f"Sent {len(rp_msgs)} roleplay messages for {message_type} from {self} to {', '.join([m.sent_to.short_name for m in rp_msgs])}",
         )
         await self.bot.cache.get_cache(RoleplayMessage).write_many(rp_msgs)
         return rp_msgs

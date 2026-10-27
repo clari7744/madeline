@@ -7,7 +7,7 @@ from discord.ext import commands
 
 from madlib import Madeline, Player, SearchTerm
 from madlib.config import TYPING_CATEGORIES, TYPING_EXCLUDE_CHANNELS
-from madlib.transformers import FailedTransform
+from madlib.helpers import EavesdropCooldown, FailedTransform
 
 log = getLogger(__name__)
 
@@ -115,9 +115,12 @@ class Events(commands.Cog):
             return
 
         # Example of responding to an error...
-        if isinstance(error, app_commands.CommandOnCooldown):
-            retry_after = error.cooldown.get_retry_after()
-            await self.send(f"This command is on cooldown. Try again in {retry_after:.2f} seconds...", context=ixn)
+        if isinstance(error, EavesdropCooldown):
+            await self.send(error.message, context=ixn)
+        elif isinstance(error, app_commands.CommandOnCooldown):
+            await self.send(
+                f"This command is on cooldown. Try again in {error.retry_after:.2f} seconds...", context=ixn
+            )
         elif isinstance(error, app_commands.CommandNotFound):
             await self.send("This command was not found.", context=ixn)
         elif isinstance(error, app_commands.CommandInvokeError):
@@ -128,7 +131,7 @@ class Events(commands.Cog):
                 await self.send(f"**This command received an unhandled exception:**\n\n{error}", context=ixn)
                 log.error("Ignoring exception in command %r", ixn.command, exc_info=error)
         elif isinstance(error, app_commands.CheckFailure):
-            await self.send(f"Check failure: {error}", context=ixn)
+            await self.send(f"Check failed: {error}", context=ixn)
         elif isinstance(error, FailedTransform):
             await self.send(f"{error}", context=ixn)
         else:
@@ -161,7 +164,7 @@ class Events(commands.Cog):
         )
         for player in notified:
             await player.send(
-                f"<a:typing:1560111253509247076> {typer.short_name} is typing...", fallback=channel, delete_after=8
+                f"<a:typing:1560111253509247076> **{typer.short_name}** is typing...", fallback=channel, delete_after=8
             )
             try:
                 await player.channel.typing()

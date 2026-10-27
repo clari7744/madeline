@@ -20,7 +20,7 @@ log = getLogger(__name__)
 
 
 @app_commands.guild_only()
-@app_commands.guilds(*COMMAND_GUILDS)
+# @app_commands.guilds(*COMMAND_GUILDS)
 @app_commands.check(is_game_channel)
 class CheckGroup(app_commands.Group, name="check", description="Check various things."):
     """
@@ -44,8 +44,8 @@ class CheckGroup(app_commands.Group, name="check", description="Check various th
 
         return await ixn.send(
             embed=Embed(
-                title=f"Room: {room}",
-                color=room.color,
+                title=f"{room} | {room.zone}",
+                color=room.resolved_color,
             ).add_field(
                 name="Connected Rooms",
                 value="\n".join(f"{c.connected_to} ({c.direction})" for c in room.get_connected()) or "None (???)",
@@ -67,9 +67,9 @@ class CheckGroup(app_commands.Group, name="check", description="Check various th
 
         return await ixn.send(
             embed=Embed(
-                title=f"Room: {room}",
+                title=f"{room} | {room.zone}",
                 description=room.description,
-                color=room.color,
+                color=room.resolved_color,
             ).add_field(
                 name="Connected Rooms",
                 value="\n".join(f"{c.connected_to} ({c.direction})" for c in room.get_connected()) or "None (???)",
@@ -95,8 +95,8 @@ class CheckGroup(app_commands.Group, name="check", description="Check various th
         return await ixn.send(
             embed=Embed(
                 title=f"People in {room}",
-                color=room.color,
-                description="\n".join(f"{p.pretty_name}" for p in members) or "You're the only one here.",
+                color=room.resolved_color,
+                description="\n".join(p.pretty_name for p in members) or "You're the only one here.",
             )
         )
 
@@ -114,18 +114,17 @@ class CheckGroup(app_commands.Group, name="check", description="Check various th
         room = player.location
 
         members = room.get_members(excludes=[player])
-
-        return await ixn.send(
-            embed=Embed(
-                title=f"People in {room}",
-                color=room.color,
-                description="\n".join(
-                    f"{p.pretty_name} ({p.full_name})\n\tAppearance: {p.appearance}\n\tAction: {p.action}\n"
-                    for p in members
-                )
-                or "You're the only one here.",
-            ),
+        embed = Embed(
+            title=f"People in {room}",
+            color=room.resolved_color,
+            description="" if members else "You're the only one here.",
         )
+        for p in members:
+            embed.add_field(
+                name=p.pretty_name,
+                value=f"**Full Name**: {p.full_name}\n**Appearance**: {p.appearance}\n**Action**: {p.action}",
+            )
+        return await ixn.send(embed=embed)
 
 
 class EnvironmentCog(commands.Cog):
@@ -140,7 +139,7 @@ class EnvironmentCog(commands.Cog):
 
     @app_commands.command(name="look-at")
     @app_commands.guild_only()
-    @app_commands.guilds(*COMMAND_GUILDS)
+    # @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def look_at(
         self,
@@ -164,21 +163,23 @@ class EnvironmentCog(commands.Cog):
 
         await target.send(f"***{player.pretty_name}** looks at you (level: {level}).*", fallback=ixn)
         title = f"Looking at {target.pretty_name}"
-        description = f"Full Name: {target.full_name}\n" f"Appearance: {target.appearance}\n" f"Action: {target.action}"
+        description = (
+            f"**Full Name:** {target.full_name}\n**Appearance:** {target.appearance}\n**Action:** {target.action}"
+        )
         if level == "subtle":
             title = f"Taking a closer look at {target.pretty_name}"
-            description += f"\nSubtle tag: {target.subtle}"
+            description += f"\n**Subtle:** {target.subtle}"
         return await ixn.send(
             embed=Embed(
                 title=title,
                 description=description,
-                color=target.location.color,
+                color=target.location.resolved_color,
             )
         )
 
     @app_commands.command(name="go-to")
     @app_commands.guild_only()
-    @app_commands.guilds(*COMMAND_GUILDS)
+    # @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     @app_commands.rename(connection="room")
     async def go_to(
@@ -228,8 +229,8 @@ class EnvironmentCog(commands.Cog):
             btext = f"somewhere in the {FLIP_DIRECTION[connection.direction]}"
             atext = f"somewhere in the {connection.direction}"
 
-        await before.alert(f"***{player.pretty_name}** leaves to {atext}.*", excludes=[player])
-        await after.alert(f"***{player.pretty_name}** enters from {btext}.*", excludes=[player])
+        await before.alert(f"***{player.pretty_name}** leaves to **{atext}**.*", excludes=[player])
+        await after.alert(f"***{player.pretty_name}** enters from **{btext}**.*", excludes=[player])
 
         # Recursively move followers
         # The top level is moved first
@@ -244,7 +245,7 @@ class EnvironmentCog(commands.Cog):
             if connection.hidden:
                 follower.following = None
                 await follower.send(
-                    f"*You couldn't see where {leader.pretty_name} went, so you stopped following them.*",
+                    f"*You couldn't see where **{leader.pretty_name}** went, so you stopped following them.*",
                     fallback=ixn,
                 )
                 follow_text += f"\n***{follower.pretty_name}** is no longer following you.*"
@@ -252,20 +253,20 @@ class EnvironmentCog(commands.Cog):
                 # Follower leaves their previous room
                 follower.location = after
                 await before.alert(
-                    f"***{follower.pretty_name}** leaves to {after}, following **{leader.pretty_name}**.*",
+                    f"***{follower.pretty_name}** leaves to **{after}**, following **{leader.pretty_name}**.*",
                     excludes=[follower, leader, player],
                 )
                 # The person they're following is told about it, but only if they're not the root player
                 # (root player has the special "follower.* follows")
                 if leader != player:
-                    await leader.send(f"***{follower.pretty_name}** follows you to {after}.*", fallback=ixn)
+                    await leader.send(f"***{follower.pretty_name}** follows you to **{after}**.*", fallback=ixn)
                 # The top-chain is told
                 follow_text += f"\n***{follower.pretty_name}** follows.*"
                 # It is confirmed to them
-                await follower.send(f"*You follow **{leader.pretty_name}** to {after}.*", fallback=ixn)
+                await follower.send(f"*You follow **{leader.pretty_name}** to **{after}**.*", fallback=ixn)
                 # The new room is told about it
                 await after.alert(
-                    f"***{follower.pretty_name}** enters from {before}, following **{leader.pretty_name}**.*",
+                    f"***{follower.pretty_name}** enters from **{before}**, following **{leader.pretty_name}**.*",
                     excludes=[follower, leader, player],
                 )
 
@@ -289,7 +290,7 @@ class EnvironmentCog(commands.Cog):
             embed=Embed(
                 title=f"Room: {after}",
                 description=f"{' | '.join(p.emoji if p.emoji else p.short_name for p in after.get_members())}\n{after.description}",
-                color=after.color,
+                color=after.resolved_color,
             ).add_field(
                 name="Connected Rooms",
                 value="\n".join(f"{c.connected_to} ({c.direction})" for c in after.get_connected()) or "None (???)",

@@ -8,13 +8,58 @@ from discord.utils import MISSING
 
 from .cache import SearchTerm
 from .config import LOCAL_DEBUG
-from .helpers import FLIP_DIRECTION
-from .tables import Connection, Player, Room
+from .helpers import FLIP_DIRECTION, FailedTransform
+from .tables import Connection, Player, Room, Zone
 
 if TYPE_CHECKING:
     from .madeline import Madeline
 
 log = getLogger(__name__)
+
+
+class ZoneTransformer(app_commands.Transformer):
+    async def transform(self, ixn: Interaction[Madeline], zone_name: str):
+        """
+        Validates a zone name.
+
+        Parameters
+        ----------
+        ixn : Interaction
+            The interaction object.
+        zone_name : str
+            The zone name to transform.
+
+        Returns
+        -------
+        Zone
+            The validated Zone object.
+        """
+        log.log(LOCAL_DEBUG, f"Trying to transform '{zone_name}' into a Zone")
+        zone = ixn.client.cache.get_cache(Zone).get_first(zone_name=SearchTerm(zone_name, ignore_case=True))
+        if zone is not None:
+            return zone
+        raise FailedTransform(f"Invalid zone name `{zone_name}`.")
+
+    async def autocomplete(self, ixn: Interaction[Madeline], current_name: str) -> list[app_commands.Choice[str]]:
+        """
+        Autocomplete zone names based on the current input.
+
+        Parameters
+        ----------
+        ixn : Interaction
+            The interaction object.
+        current_name : str
+            The current input string.
+
+        Returns
+        -------
+        list[app_commands.Choice[str]]
+            A list of choices for the autocomplete.
+        """
+        return [
+            app_commands.Choice(name=zone.zone_name, value=zone.zone_name)
+            for zone in ixn.client.cache.get_cache(Zone).get_many(zone_name=SearchTerm(current_name, fuzzy=True))
+        ][:25]
 
 
 class RoomTransformer(app_commands.Transformer):
@@ -87,7 +132,7 @@ class AdjacentRoomTransformer(app_commands.Transformer):
         if conn is not None:
             return conn
         raise FailedTransform(
-            f"There is no direct connection between `{current_player.location.room_name}` and `{adj_room_name}`."
+            f"There is no direct connection between `{current_player.location}` and `{adj_room_name}`."
         )
 
     async def autocomplete(self, ixn: Interaction[Madeline], current_name: str) -> list[app_commands.Choice[str]]:
@@ -122,9 +167,7 @@ class AdjacentRoomTransformer(app_commands.Transformer):
             ),
         )
         return [
-            app_commands.Choice(
-                name=f"{conn.connected_to.room_name} ({conn.direction})", value=conn.connected_to.room_name
-            )
+            app_commands.Choice(name=f"{conn.connected_to} ({conn.direction})", value=conn.connected_to.room_name)
             for conn in matching_rooms
         ][:25]
 
@@ -185,8 +228,8 @@ class ConnectionTransformer(app_commands.Transformer):
             )
         return [
             app_commands.Choice(
-                name=f"{conn.room.room_name}->{conn.connected_to.room_name} ({conn.direction})",
-                value=f"{conn.room.room_name}|{conn.connected_to.room_name}",
+                name=f"{conn.room}->{conn.connected_to} ({conn.direction})",
+                value=f"{conn.room}|{conn.connected_to}",
             )
             for conn in matching_connections
         ][:25]
@@ -323,8 +366,3 @@ class RoommateTransformer(app_commands.Transformer):
             )
             if current_player.is_roommate(player, action="")[0] and player != current_player
         ][:25]
-
-
-class FailedTransform(app_commands.AppCommandError):
-    def __init__(self, message: str):
-        super().__init__(message)

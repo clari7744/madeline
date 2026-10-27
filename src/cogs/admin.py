@@ -1,6 +1,6 @@
 from discord import Color, Embed, Interaction, app_commands
 from discord.ext import commands
-from DPyUtils import _and, an
+from DPyUtils import an
 
 from madlib import (
     Connection,
@@ -10,14 +10,15 @@ from madlib import (
     PlayerTransformer,
     Room,
     RoomTransformer,
-    SearchTerm,
+    Zone,
+    ZoneTransformer,
 )
 from madlib.config import COMMAND_GUILDS
 from madlib.ui import DiceRollView
 
 
 @app_commands.guild_only()
-@app_commands.guilds(*COMMAND_GUILDS)
+# @app_commands.guilds(*COMMAND_GUILDS)
 @app_commands.default_permissions(administrator=True)
 @app_commands.check(lambda ixn: ixn.client.is_owner(ixn.user))
 class AdminCog(commands.GroupCog, name="admin"):
@@ -51,7 +52,7 @@ class AdminCog(commands.GroupCog, name="admin"):
         was_following = await player.move_to(room)
 
         await player.send(
-            f"*You have been teleported to {room}.{f' You are no longer following {was_following.pretty_name}.' if was_following else ''}*",
+            f"*You have been teleported to **{room}**.{f' You are no longer following **{was_following.pretty_name}**.' if was_following else ''}*",
             fallback=ixn,
         )
 
@@ -64,7 +65,7 @@ class AdminCog(commands.GroupCog, name="admin"):
             # FYI: if we bring followers and X follows Y who follows Z and Z was teleported, then it'll tell X
             # that Z was teleported, even though X is still following Y.
             # could be fixed with follower.following?
-            message = f"***{follower.following.pretty_name}** was teleported to {room} and you were brought along.*"
+            message = f"***{follower.following.pretty_name}** was teleported to **{room}** and you were brought along.*"
             follower.location = room
             # message = f"***{player.pretty_name}** was teleported to {room} and you were brought along.*"
             if not bring_followers:
@@ -74,7 +75,7 @@ class AdminCog(commands.GroupCog, name="admin"):
         await self.bot.cache.get_cache(Player).write_many(followers)  # Update the cache and database
 
         return await ixn.send(
-            f"Teleported {player.pretty_name} to {room}.\n{f' Brought {len(followers)} followers along.' if bring_followers else ''}"
+            f"Teleported **{player.pretty_name}** to **{room}**.\n{f' Brought {len(followers)} followers along.' if bring_followers else ''}"
         )
 
     @app_commands.command(name="roll")
@@ -99,36 +100,34 @@ class AdminCog(commands.GroupCog, name="admin"):
         goal : int
             The goal number to beat.
         bonus_dice : int, optional
-            The number of bonus dice to roll (default is 0).
+            The number of bonus dice to roll (default is 0). Mutually exclusive with penalty_dice.
         penalty_dice : int, optional
-            The number of penalty dice to roll (default is 0).
+            The number of penalty dice to roll (default is 0). Mutually exclusive with bonus_dice.
         """
-        details = _and(
-            *filter(
-                bool,
-                (
-                    f"a goal of **{goal}**",
-                    f"{bonus_dice} bonus dice" if bonus_dice > 1 else "a bonus die" if bonus_dice == 1 else "",
-                    (
-                        f"{penalty_dice} penalty dice"
-                        if penalty_dice > 1
-                        else "a penalty die" if penalty_dice == 1 else ""
-                    ),
-                ),
-            )
-        )
+        if bonus_dice and penalty_dice:
+            raise app_commands.CheckFailure("Cannot have both bonus and penalty dice.")
 
-        await target.send(
+        details = f"a goal of **{goal}**"
+        if bonus_dice > 1:
+            details += f" and **{bonus_dice} bonus dice**"
+        elif bonus_dice == 1:
+            details += " and **a bonus die**"
+        elif penalty_dice > 1:
+            details += f" and **{penalty_dice} penalty dice**"
+        elif penalty_dice == 1:
+            details += " and **a penalty die**"
+        view = DiceRollView(
+            triggered_by=ixn,
+            target=target,
+            check_type=check_type,
+            goal=goal,
+            bonus_dice=bonus_dice,
+            penalty_dice=penalty_dice,
+        )
+        view.message = await target.send(
             f"You have been prompted to roll **{an(check_type)} check** with {details}.",
             fallback=ixn,
-            view=DiceRollView(
-                triggered_by=ixn,
-                target=target,
-                check_type=check_type,
-                goal=goal,
-                bonus_dice=bonus_dice,
-                penalty_dice=penalty_dice,
-            ),
+            view=view,
         )
         return await ixn.send(f"Prompted **{target}** to roll **{an(check_type)} check** with {details}.")
 
@@ -147,35 +146,37 @@ class AdminCog(commands.GroupCog, name="admin"):
             The message to send.
         """
         recipients = ixn.client.cache.get_cache(Player).get_many()
-        await ixn.send(f"Sending loudspeaker message to {len(recipients)} players...")
+        await ixn.send(f"Sending loudspeaker message to **{len(recipients)} players**...")
         if not recipients:
             return await ixn.send("No players found (the player cache is empty?).")
         for recipient in recipients:
             await recipient.send(f"**Loudspeaker:** {message}", fallback=ixn)
         return await ixn.edit_original_response(
-            content=f"Sent loudspeaker message to all {len(recipients)} players.\n## Message\n{message}"
+            content=f"Sent loudspeaker message to all **{len(recipients)} players**.\n## Message\n{message}"
         )
 
     @loudspeaker.command(name="zone")
-    async def loudspeaker_zone(self, ixn: Interaction[Madeline], zone: str, message: str):
+    async def loudspeaker_zone(
+        self, ixn: Interaction[Madeline], zone: app_commands.Transform[Zone, ZoneTransformer], message: str
+    ):
         """
         Send a message to all players in the same zone.
 
         Parameters
         ----------
-        zone : str
+        zone : Zone
             The zone to send the message to.
         message : str
             The message to send.
         """
-        recipients = ixn.client.cache.get_cache(Player).get_many(location__zone=SearchTerm(zone, fuzzy=True))
+        recipients = [p for r in zone.get_rooms() for p in r.get_members()]
         if not recipients:
-            return await ixn.send(f"No players found in zone {zone} (either that zone doesn't exist or is empty).")
-        await ixn.send(f"Sending loudspeaker message to {len(recipients)} players in zone {zone}...")
+            return await ixn.send(f"No players found in zone **{zone}** (either that zone doesn't exist or is empty).")
+        await ixn.send(f"Sending loudspeaker message to **{len(recipients)} players** in zone **{zone}**...")
         for recpient in recipients:
             await recpient.send(f"**Loudspeaker:** {message}", fallback=ixn)
         return await ixn.edit_original_response(
-            content=f"Sent loudspeaker message to all players in zone {zone}.\n## Message\n{message}"
+            content=f"Sent loudspeaker message to all players in zone **{zone}**.\n## Message\n{message}"
         )
 
     @loudspeaker.command(name="room")
@@ -191,13 +192,13 @@ class AdminCog(commands.GroupCog, name="admin"):
             The message to send.
         """
         recipients = ixn.client.cache.get_cache(Player).get_many(location__room_name=room.room_name)
-        await ixn.send(f"Sending loudspeaker message to {len(recipients)} players in room {room}...")
+        await ixn.send(f"Sending loudspeaker message to **{len(recipients)} players** in room **{room}**...")
         if not recipients:
-            return await ixn.send(f"No players found in room {room} (either that room doesn't exist or is empty).")
+            return await ixn.send(f"No players found in room **{room}** (either that room doesn't exist or is empty).")
         for recipient in recipients:
             await recipient.send(f"**Loudspeaker:** {message}", fallback=ixn)
         return await ixn.edit_original_response(
-            content=f"Sent loudspeaker message to {len(recipients)} players in room {room}.\n## Message\n{message}"
+            content=f"Sent loudspeaker message to **{len(recipients)} players** in room **{room}**.\n## Message\n{message}"
         )
 
     @loudspeaker.command(name="player")
@@ -232,7 +233,7 @@ class AdminCog(commands.GroupCog, name="admin"):
             True to lock the room, False to unlock it. If not specified,currently locked state will be shown.
         """
         if lock is None:
-            return await ixn.send(f"**{room}** is currently {'' if room.locked else 'un'}locked.")
+            return await ixn.send(f"**{room}** is currently **{'' if room.locked else 'un'}locked**.")
 
         room.locked = lock
         await room.save()

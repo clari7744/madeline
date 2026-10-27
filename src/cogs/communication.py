@@ -1,12 +1,11 @@
 import random
 import re
-from datetime import timedelta
 from logging import getLogger
 
-import DPyUtils
 from discord import Interaction, Message, app_commands
 from discord.ext import commands
 from discord.utils import format_dt, utcnow
+from DPyUtils import Confirmation, strfdur
 
 from madlib import (
     Actions,
@@ -15,12 +14,14 @@ from madlib import (
     Madeline,
     Player,
     RoleplayMessage,
+    Room,
     RoommateTransformer,
     SearchTerm,
     is_game_channel,
     strip_content_header,
 )
-from madlib.config import COMMAND_GUILDS, LOCAL_DEBUG
+from madlib.config import COMMAND_GUILDS, EAVESDROP_COOLDOWN, EAVESDROP_TIME_LIMIT, LOCAL_DEBUG
+from madlib.helpers import EavesdropCooldown
 from madlib.ui import EditRoleplayMessageModal
 
 log = getLogger(__name__)
@@ -34,6 +35,11 @@ class CommunicationCog(commands.Cog):
     def __init__(self, bot: Madeline):
         self.bot = bot
         self.dialog_re = re.compile(r'"(.*?)"', flags=re.I | re.M)
+        # 1 use per EAVESDROP_COOLDOWN per room
+        self.eavesdrop_cd = commands.CooldownMapping[Room].from_cooldown(
+            1, EAVESDROP_COOLDOWN.total_seconds(), lambda room: room.room_name
+        )
+
         self.ctx_edit_roleplay_message = app_commands.ContextMenu(
             name="Edit Roleplay Message",
             callback=self.context_edit_roleplay_message,
@@ -47,7 +53,7 @@ class CommunicationCog(commands.Cog):
 
     @app_commands.command(name="eavesdrop")
     @app_commands.guild_only()
-    @app_commands.guilds(*COMMAND_GUILDS)
+    # @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     @app_commands.rename(connection="room")
     async def eavesdrop(
@@ -61,17 +67,20 @@ class CommunicationCog(commands.Cog):
         connection : Connection
             The adjacent room to eavesdrop on.
         """
-        # all messages sent in ROOM in the last 20 minutes, sorted by last_updated, oldest-first
+
+        if wait := self.eavesdrop_cd.update_rate_limit(connection.connected_to):
+            raise EavesdropCooldown(wait, connection.connected_to, self.eavesdrop_cd._cooldown)
+        # all messages sent in ROOM in the last EAVESDROP_TIME_LIMIT, sorted by last_updated, oldest-first
         await ixn.response.defer(thinking=True)
         player = await Player.from_interaction(ixn)
         log.log(
             LOCAL_DEBUG,
-            f"{player} is eavesdropping on {connection.connected_to} from {connection.room.room_name}",
+            f"{player} is eavesdropping on {connection.connected_to} from {connection.room}",
         )
         all_msgs = self.bot.cache.get_cache(RoleplayMessage).get_many(
             sent_in_room=SearchTerm(connection.connected_to, ignore_case=True),
             message_type="rp",
-            predicate=lambda msg: (utcnow() - msg.last_updated) < timedelta(minutes=20),
+            predicate=lambda msg: (utcnow() - msg.last_updated) < EAVESDROP_TIME_LIMIT,
         )
 
         rp_unique: dict[int, RoleplayMessage] = {}
@@ -81,14 +90,14 @@ class CommunicationCog(commands.Cog):
 
         if not eavesdroppable:
             return await ixn.send(
-                f"No RP messages found in {connection.connected_to.room_name} within the last 20 minutes."
+                f"No RP messages found in **{connection.connected_to}** within the last {strfdur(EAVESDROP_TIME_LIMIT)}."
             )
         log.log(
             LOCAL_DEBUG,
-            f"Found {len(eavesdroppable)} theoretically-eavesdroppable RP messages in {connection.connected_to.room_name} to eavesdrop on.",
+            f"Found {len(eavesdroppable)} theoretically-eavesdroppable RP messages in {connection.connected_to} to eavesdrop on.",
         )
         # await ixn.send(
-        #     f"Found {len(eavesdroppable)} RP message{'' if len(eavesdroppable) == 1 else 's'} in {connection.connected_to.room_name} from the last 20 minutes:"
+        #     f"Found {len(eavesdroppable)} RP message{'' if len(eavesdroppable) == 1 else 's'} in {connection.connected_to.room_name} from the last {strfdur(EAVESDROP_TIME_LIMIT)}:"
         # )
         for rp_msg in eavesdroppable:
             log.log(
@@ -107,11 +116,11 @@ class CommunicationCog(commands.Cog):
             await ixn.send(
                 f"*{format_dt(rp_msg.last_updated)} - **{random.choice((rp_msg.sent_by.pretty_name, '[REDACTED]'))}** said:* {txt}",
             )
-        await ixn.send(f"End of RP messages from {connection.connected_to.room_name}.", ephemeral=True)
+        await ixn.send(f"End of RP messages from **{connection.connected_to}**.", ephemeral=True)
 
     @app_commands.command(name="rp")
     @app_commands.guild_only()
-    @app_commands.guilds(*COMMAND_GUILDS)
+    # @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def rp(self, ixn: Interaction[Madeline], message: str):
         """
@@ -128,7 +137,7 @@ class CommunicationCog(commands.Cog):
 
     @app_commands.command(name="whisper")
     @app_commands.guild_only()
-    @app_commands.guilds(*COMMAND_GUILDS)
+    # @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def whisper(
         self,
@@ -151,7 +160,7 @@ class CommunicationCog(commands.Cog):
 
     @app_commands.command(name="shout")
     @app_commands.guild_only()
-    @app_commands.guilds(*COMMAND_GUILDS)
+    # @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def shout(self, ixn: Interaction[Madeline], message: str):
         # TODO: shout to specific room
@@ -167,7 +176,7 @@ class CommunicationCog(commands.Cog):
         await player.rp(ixn, message, message_type="shout")
 
     @app_commands.guild_only()
-    @app_commands.guilds(*COMMAND_GUILDS)
+    # @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def context_edit_roleplay_message(self, ixn: Interaction[Madeline], message: Message):
         player = await Player.from_interaction(ixn)
@@ -179,7 +188,7 @@ class CommunicationCog(commands.Cog):
         await ixn.response.send_modal(EditRoleplayMessageModal(player, message, example_msg.message_type))
 
     @app_commands.guild_only()
-    @app_commands.guilds(*COMMAND_GUILDS)
+    # @app_commands.guilds(*COMMAND_GUILDS)
     @app_commands.check(is_game_channel)
     async def context_delete_roleplay_message(self, ixn: Interaction[Madeline], message: Message):
         player = await Player.from_interaction(ixn)
@@ -188,7 +197,7 @@ class CommunicationCog(commands.Cog):
         found_messages = rpm_cache.get_many(original_message_id=message.id, sent_by=player)
         if not found_messages:
             raise app_commands.CheckFailure("This is not a roleplay message.")
-        c = DPyUtils.Confirmation(ixn, timeout=30, ephemeral=True)
+        c = Confirmation(ixn, timeout=30, ephemeral=True)
         await ixn.send("Are you sure you want to delete this message?", view=c, ephemeral=True)
         if not await c.run():
             return
